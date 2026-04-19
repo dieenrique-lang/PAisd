@@ -1,21 +1,34 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from openpyxl import Workbook, load_workbook
 from datetime import datetime
-import os
+import sqlite3
 
 app = FastAPI()
 
-archivo = "personas.xlsx"
+DB = "personas.db"
 
-# Crear Excel si no existe
-if not os.path.exists(archivo):
-    wb = Workbook()
-    ws = wb.active
-    ws.append(["Nombre", "Año", "Mes", "Día", "Edad"])
-    wb.save(archivo)
 
-# Calcular edad
+def conectar():
+    return sqlite3.connect(DB)
+
+
+def crear_tabla():
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS personas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL,
+            anio INTEGER NOT NULL,
+            mes INTEGER NOT NULL,
+            dia INTEGER NOT NULL,
+            edad INTEGER NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
 def calcular_edad(anio, mes, dia):
     hoy = datetime.now().date()
     edad = hoy.year - int(anio)
@@ -23,7 +36,10 @@ def calcular_edad(anio, mes, dia):
         edad -= 1
     return edad
 
-# Página principal
+
+crear_tabla()
+
+
 @app.get("/", response_class=HTMLResponse)
 def inicio():
     return """
@@ -78,10 +94,10 @@ def inicio():
             <h2>Agenda de Personas</h2>
 
             <form action="/guardar" method="post">
-                <input name="nombre" placeholder="Nombre"><br>
-                <input name="anio" placeholder="Año"><br>
-                <input name="mes" placeholder="Mes"><br>
-                <input name="dia" placeholder="Día"><br><br>
+                <input name="nombre" placeholder="Nombre" required><br>
+                <input name="anio" placeholder="Año" type="number" required><br>
+                <input name="mes" placeholder="Mes" type="number" required><br>
+                <input name="dia" placeholder="Día" type="number" required><br><br>
                 <button type="submit">Guardar</button>
             </form>
 
@@ -91,24 +107,35 @@ def inicio():
     </html>
     """
 
-# Guardar persona
-@app.post("/guardar")
-def guardar(nombre: str = Form(...), anio: int = Form(...), mes: int = Form(...), dia: int = Form(...)):
-    wb = load_workbook(archivo)
-    ws = wb.active
 
+@app.post("/guardar")
+def guardar(
+    nombre: str = Form(...),
+    anio: int = Form(...),
+    mes: int = Form(...),
+    dia: int = Form(...)
+):
     edad = calcular_edad(anio, mes, dia)
 
-    ws.append([nombre, anio, mes, dia, edad])
-    wb.save(archivo)
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO personas (nombre, anio, mes, dia, edad)
+        VALUES (?, ?, ?, ?, ?)
+    """, (nombre, anio, mes, dia, edad))
+    conn.commit()
+    conn.close()
 
     return RedirectResponse(url="/ver", status_code=303)
 
-# Ver personas
+
 @app.get("/ver", response_class=HTMLResponse)
 def ver():
-    wb = load_workbook(archivo)
-    ws = wb.active
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, nombre, anio, mes, dia, edad FROM personas")
+    personas = cursor.fetchall()
+    conn.close()
 
     html = """
     <html>
@@ -164,22 +191,20 @@ def ver():
     </tr>
     """
 
-    fila_num = 2
-    for fila in ws.iter_rows(min_row=2, values_only=True):
+    for persona in personas:
         html += f"""
         <tr>
-            <td>{fila[0]}</td>
-            <td>{fila[4]}</td>
-            <td>{fila[3]}/{fila[2]}/{fila[1]}</td>
+            <td>{persona[1]}</td>
+            <td>{persona[5]}</td>
+            <td>{persona[4]}/{persona[3]}/{persona[2]}</td>
             <td>
-                <a class="eliminar" href="/eliminar/{fila_num}" 
+                <a class="eliminar" href="/eliminar/{persona[0]}"
                 onclick="return confirm('¿Seguro que quieres eliminar?')">
                 Eliminar
                 </a>
             </td>
         </tr>
         """
-        fila_num += 1
 
     html += """
     </table>
@@ -191,13 +216,13 @@ def ver():
 
     return html
 
-# Eliminar persona
-@app.get("/eliminar/{fila}")
-def eliminar(fila: int):
-    wb = load_workbook(archivo)
-    ws = wb.active
 
-    ws.delete_rows(fila)
-    wb.save(archivo)
+@app.get("/eliminar/{persona_id}")
+def eliminar(persona_id: int):
+    conn = conectar()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM personas WHERE id = ?", (persona_id,))
+    conn.commit()
+    conn.close()
 
     return RedirectResponse(url="/ver", status_code=303)
