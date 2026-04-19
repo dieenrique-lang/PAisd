@@ -1,32 +1,32 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from datetime import datetime
-import sqlite3
+import os
+import psycopg
 
 app = FastAPI()
 
-DB = "personas.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def conectar():
-    return sqlite3.connect(DB)
+    return psycopg.connect(DATABASE_URL)
 
 
 def crear_tabla():
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS personas (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nombre TEXT NOT NULL,
-            anio INTEGER NOT NULL,
-            mes INTEGER NOT NULL,
-            dia INTEGER NOT NULL,
-            edad INTEGER NOT NULL
-        )
-    """)
-    conn.commit()
-    conn.close()
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS personas (
+                    id SERIAL PRIMARY KEY,
+                    nombre TEXT NOT NULL,
+                    anio INTEGER NOT NULL,
+                    mes INTEGER NOT NULL,
+                    dia INTEGER NOT NULL,
+                    edad INTEGER NOT NULL
+                )
+            """)
+        conn.commit()
 
 
 def calcular_edad(anio, mes, dia):
@@ -88,7 +88,6 @@ def inicio():
         }
     </style>
     </head>
-
     <body>
         <div class="card">
             <h2>Agenda de Personas</h2>
@@ -117,25 +116,27 @@ def guardar(
 ):
     edad = calcular_edad(anio, mes, dia)
 
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO personas (nombre, anio, mes, dia, edad)
-        VALUES (?, ?, ?, ?, ?)
-    """, (nombre, anio, mes, dia, edad))
-    conn.commit()
-    conn.close()
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO personas (nombre, anio, mes, dia, edad)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (nombre, anio, mes, dia, edad))
+        conn.commit()
 
     return RedirectResponse(url="/ver", status_code=303)
 
 
 @app.get("/ver", response_class=HTMLResponse)
 def ver():
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, nombre, anio, mes, dia, edad FROM personas")
-    personas = cursor.fetchall()
-    conn.close()
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, nombre, anio, mes, dia, edad
+                FROM personas
+                ORDER BY id
+            """)
+            personas = cursor.fetchall()
 
     html = """
     <html>
@@ -178,7 +179,6 @@ def ver():
         }
     </style>
     </head>
-
     <body>
     <h2>Listado de Personas</h2>
 
@@ -219,10 +219,9 @@ def ver():
 
 @app.get("/eliminar/{persona_id}")
 def eliminar(persona_id: int):
-    conn = conectar()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM personas WHERE id = ?", (persona_id,))
-    conn.commit()
-    conn.close()
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM personas WHERE id = %s", (persona_id,))
+        conn.commit()
 
     return RedirectResponse(url="/ver", status_code=303)
