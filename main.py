@@ -191,63 +191,97 @@ def inicio():
     <html>
     <head>
     <meta charset="UTF-8">
-    <style>
-        body {
-            font-family: Arial;
-            background: linear-gradient(135deg, #eef2ff, #f8fafc);
-            text-align: center;
-            margin: 0;
-            padding: 40px 20px;
-        }
-        .card {
-            background: white;
-            padding: 28px;
-            margin: 30px auto;
-            width: 340px;
-            border-radius: 18px;
-            box-shadow: 0 12px 30px rgba(0,0,0,0.10);
-        }
-        h2 {
-            margin-top: 0;
-            color: #1d4ed8;
-        }
-        input {
-            width: 92%;
-            padding: 12px;
-            margin: 7px;
-            border-radius: 10px;
-            border: 1px solid #d1d5db;
-            font-size: 15px;
-        }
-        button {
-            background: #2563eb;
-            color: white;
-            padding: 12px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            width: 95%;
-            font-weight: bold;
-            font-size: 15px;
-        }
-        button:hover {
-            background: #1d4ed8;
-        }
-        a {
-            display: block;
-            margin-top: 14px;
-            color: #2563eb;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .sub {
-            color: #64748b;
-            margin-bottom: 20px;
-        }
-    </style>
+   <style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        /* 🔥 Fondo llamativo profesional */
+        background: linear-gradient(135deg, #1e3a8a, #2563eb, #38bdf8);
+        background-size: 300% 300%;
+        animation: gradientMove 8s ease infinite;
+    }
+
+    @keyframes gradientMove {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
+    .card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        padding: 30px;
+        width: 360px;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+        text-align: center;
+    }
+
+    h2 {
+        margin-top: 0;
+        color: #1e3a8a;
+        font-size: 26px;
+    }
+
+    .sub {
+        color: #64748b;
+        margin-bottom: 20px;
+        font-size: 14px;
+    }
+
+    input {
+        width: 92%;
+        padding: 12px;
+        margin: 8px;
+        border-radius: 10px;
+        border: 1px solid #d1d5db;
+        font-size: 15px;
+        transition: 0.2s;
+    }
+
+    input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+    }
+
+    button {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: white;
+        padding: 12px;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        width: 95%;
+        font-weight: bold;
+        font-size: 15px;
+        transition: 0.2s;
+    }
+
+    button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    a {
+        display: block;
+        margin-top: 14px;
+        color: #1e3a8a;
+        text-decoration: none;
+        font-weight: bold;
+        transition: 0.2s;
+    }
+
+    a:hover {
+        color: #2563eb;
+        transform: translateX(3px);
+    }
+</style>
     </head>
     <body>
         <div class="card">
