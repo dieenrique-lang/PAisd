@@ -74,13 +74,14 @@ def signo_zodiacal(dia, mes):
 
 
 def estacion_sur(dia, mes):
+    dia = int(dia)
     mes = int(mes)
 
-    if mes in [12, 1, 2]:
+    if (mes == 12 and dia >= 21) or mes in [1, 2] or (mes == 3 and dia <= 20):
         return "Verano"
-    elif mes in [3, 4, 5]:
+    elif (mes == 3 and dia >= 21) or mes in [4, 5] or (mes == 6 and dia <= 20):
         return "Otoño"
-    elif mes in [6, 7, 8]:
+    elif (mes == 6 and dia >= 21) or mes in [7, 8] or (mes == 9 and dia <= 22):
         return "Invierno"
     else:
         return "Primavera"
@@ -144,7 +145,7 @@ def personalidad_por_fecha(dia, mes):
 def generacion_por_anio(anio):
     anio = int(anio)
     if anio <= 1945:
-        return "Generación Silenciosa o anterior"
+        return "Silenciosa o anterior"
     elif anio <= 1964:
         return "Baby Boomer"
     elif anio <= 1980:
@@ -172,6 +173,15 @@ def semestre_nacimiento(mes):
     return "Primer semestre" if int(mes) <= 6 else "Segundo semestre"
 
 
+def mes_nombre(mes):
+    nombres = {
+        1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+        5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+        9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+    }
+    return nombres.get(int(mes), f"Mes {mes}")
+
+
 crear_tabla()
 
 
@@ -180,58 +190,75 @@ def inicio():
     return """
     <html>
     <head>
+    <meta charset="UTF-8">
     <style>
         body {
             font-family: Arial;
-            background-color: #f4f6f8;
+            background: linear-gradient(135deg, #eef2ff, #f8fafc);
             text-align: center;
+            margin: 0;
+            padding: 40px 20px;
         }
         .card {
             background: white;
-            padding: 20px;
-            margin: 50px auto;
-            width: 320px;
-            border-radius: 12px;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            padding: 28px;
+            margin: 30px auto;
+            width: 340px;
+            border-radius: 18px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.10);
+        }
+        h2 {
+            margin-top: 0;
+            color: #1d4ed8;
         }
         input {
-            width: 90%;
-            padding: 10px;
-            margin: 6px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
+            width: 92%;
+            padding: 12px;
+            margin: 7px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            font-size: 15px;
         }
         button {
-            background: #007bff;
+            background: #2563eb;
             color: white;
-            padding: 10px;
+            padding: 12px;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
             cursor: pointer;
             width: 95%;
             font-weight: bold;
+            font-size: 15px;
         }
         button:hover {
-            background: #0056b3;
+            background: #1d4ed8;
         }
         a {
             display: block;
-            margin-top: 15px;
-            color: #007bff;
+            margin-top: 14px;
+            color: #2563eb;
             text-decoration: none;
             font-weight: bold;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .sub {
+            color: #64748b;
+            margin-bottom: 20px;
         }
     </style>
     </head>
     <body>
         <div class="card">
             <h2>Agenda de Personas</h2>
+            <div class="sub">Guarda personas y revisa estadísticas en tu dashboard</div>
 
             <form action="/guardar" method="post">
                 <input name="nombre" placeholder="Nombre" required><br>
                 <input name="anio" placeholder="Año" type="number" required><br>
-                <input name="mes" placeholder="Mes" type="number" required><br>
-                <input name="dia" placeholder="Día" type="number" required><br><br>
+                <input name="mes" placeholder="Mes" type="number" min="1" max="12" required><br>
+                <input name="dia" placeholder="Día" type="number" min="1" max="31" required><br><br>
                 <button type="submit">Guardar</button>
             </form>
 
@@ -277,33 +304,41 @@ def ver():
     html = """
     <html>
     <head>
+    <meta charset="UTF-8">
     <style>
         body {
             font-family: Arial;
-            background-color: #f4f6f8;
+            background: #f4f6f8;
             text-align: center;
+            margin: 0;
+            padding: 30px 15px;
+        }
+        h2 {
+            color: #1d4ed8;
         }
         table {
             margin: 30px auto;
             border-collapse: collapse;
-            width: 88%;
+            width: 92%;
             background: white;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+            border-radius: 14px;
+            overflow: hidden;
         }
         th {
-            background: #007bff;
+            background: #2563eb;
             color: white;
-            padding: 12px;
+            padding: 14px;
         }
         td {
-            padding: 10px;
-            border-bottom: 1px solid #ddd;
+            padding: 12px 10px;
+            border-bottom: 1px solid #e5e7eb;
         }
         tr:hover {
-            background-color: #f1f1f1;
+            background-color: #f8fafc;
         }
         a.nombre-link {
-            color: #007bff;
+            color: #2563eb;
             text-decoration: none;
             font-weight: bold;
         }
@@ -311,22 +346,23 @@ def ver():
             text-decoration: underline;
         }
         a.eliminar {
-            color: red;
+            color: #dc2626;
             text-decoration: none;
             font-weight: bold;
             margin-left: 10px;
         }
         a.editar {
-            color: green;
+            color: #16a34a;
             text-decoration: none;
             font-weight: bold;
             margin-right: 10px;
         }
         a.volver {
             display: block;
-            margin-top: 20px;
-            color: #007bff;
+            margin-top: 18px;
+            color: #2563eb;
             font-weight: bold;
+            text-decoration: none;
         }
     </style>
     </head>
@@ -397,45 +433,48 @@ def detalle_persona(persona_id: int):
     html = f"""
     <html>
     <head>
+    <meta charset="UTF-8">
     <style>
         body {{
             font-family: Arial;
-            background-color: #f4f6f8;
+            background: linear-gradient(135deg, #eef2ff, #f8fafc);
             margin: 0;
-            padding: 30px;
+            padding: 30px 15px;
             text-align: center;
         }}
         .card {{
-            max-width: 760px;
+            max-width: 780px;
             margin: auto;
             background: white;
-            border-radius: 14px;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            border-radius: 18px;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.10);
             padding: 30px;
             text-align: left;
         }}
         h2 {{
             text-align: center;
-            color: #007bff;
+            color: #2563eb;
+            margin-top: 0;
         }}
         .dato {{
             margin: 12px 0;
             font-size: 17px;
+            line-height: 1.5;
         }}
         .bloque {{
-            margin-top: 24px;
+            margin-top: 26px;
             padding-top: 18px;
-            border-top: 1px solid #e5e5e5;
+            border-top: 1px solid #e5e7eb;
         }}
         a {{
             display: inline-block;
             margin-top: 24px;
-            color: #007bff;
+            color: #2563eb;
             text-decoration: none;
             font-weight: bold;
         }}
         .nota {{
-            color: #666;
+            color: #64748b;
             font-size: 14px;
             margin-top: 12px;
         }}
@@ -461,7 +500,7 @@ def detalle_persona(persona_id: int):
                 <div class="dato"><strong>Estadísticas demográficas:</strong></div>
                 <div class="dato">• Año de nacimiento: {anio}</div>
                 <div class="dato">• Generación: {generacion}</div>
-                <div class="dato">• Mes de nacimiento: {mes}</div>
+                <div class="dato">• Mes de nacimiento: {mes_nombre(mes)}</div>
                 <div class="dato">• Trimestre de nacimiento: {trimestre}</div>
                 <div class="dato">• Semestre de nacimiento: {semestre}</div>
             </div>
@@ -487,15 +526,14 @@ def dashboard():
             personas = cursor.fetchall()
 
     total = len(personas)
-
-    if total > 0:
-        edad_promedio = round(sum(p[5] for p in personas) / total, 1)
-    else:
-        edad_promedio = 0
+    edad_promedio = round(sum(p[5] for p in personas) / total, 1) if total > 0 else 0
+    edad_max = max((p[5] for p in personas), default=0)
+    edad_min = min((p[5] for p in personas), default=0)
 
     signos = {}
     estaciones = {}
     generaciones = {}
+    meses = {i: 0 for i in range(1, 13)}
 
     for persona in personas:
         _, nombre, anio, mes, dia, edad = persona
@@ -507,146 +545,416 @@ def dashboard():
         signos[signo] = signos.get(signo, 0) + 1
         estaciones[estacion] = estaciones.get(estacion, 0) + 1
         generaciones[generacion] = generaciones.get(generacion, 0) + 1
+        meses[int(mes)] = meses.get(int(mes), 0) + 1
+
+    signos_orden = [
+        "Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo",
+        "Libra", "Escorpio", "Sagitario", "Capricornio", "Acuario", "Piscis"
+    ]
+    signos_labels = [s for s in signos_orden if s in signos]
+    signos_values = [signos[s] for s in signos_labels]
+
+    estaciones_orden = ["Verano", "Otoño", "Invierno", "Primavera"]
+    estaciones_labels = [e for e in estaciones_orden if e in estaciones]
+    estaciones_values = [estaciones[e] for e in estaciones_labels]
+
+    generaciones_orden = [
+        "Silenciosa o anterior",
+        "Baby Boomer",
+        "Generación X",
+        "Millennial",
+        "Generación Z",
+        "Generación Alpha"
+    ]
+    generaciones_labels = [g for g in generaciones_orden if g in generaciones]
+    generaciones_values = [generaciones[g] for g in generaciones_labels]
+
+    meses_labels = [mes_nombre(i) for i in range(1, 13)]
+    meses_values = [meses[i] for i in range(1, 13)]
+
+    signo_top = max(signos.items(), key=lambda x: x[1])[0] if signos else "-"
+    estacion_top = max(estaciones.items(), key=lambda x: x[1])[0] if estaciones else "-"
+    generacion_top = max(generaciones.items(), key=lambda x: x[1])[0] if generaciones else "-"
+
+    ranking = sorted(
+        [
+            ("Signo más frecuente", signo_top, signos.get(signo_top, 0) if signo_top != "-" else 0),
+            ("Estación más frecuente", estacion_top, estaciones.get(estacion_top, 0) if estacion_top != "-" else 0),
+            ("Generación más frecuente", generacion_top, generaciones.get(generacion_top, 0) if generacion_top != "-" else 0),
+        ],
+        key=lambda x: x[2],
+        reverse=True
+    )
 
     html = f"""
     <html>
     <head>
-    <style>
-        body {{
-            font-family: Arial;
-            background-color: #f4f6f8;
-            margin: 0;
-            padding: 30px;
-            text-align: center;
-        }}
-        .contenedor {{
-            max-width: 1000px;
-            margin: auto;
-        }}
-        .titulo {{
-            color: #007bff;
-            margin-bottom: 25px;
-        }}
-        .resumen {{
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            margin-bottom: 30px;
-        }}
-        .card {{
-            background: white;
-            padding: 20px;
-            min-width: 220px;
-            border-radius: 14px;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
-        }}
-        .card h3 {{
-            margin: 0 0 10px 0;
-            color: #444;
-        }}
-        .card p {{
-            font-size: 28px;
-            font-weight: bold;
-            color: #007bff;
-            margin: 0;
-        }}
-        .bloques {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 20px;
-        }}
-        .bloque {{
-            background: white;
-            border-radius: 14px;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
-            padding: 20px;
-            text-align: left;
-        }}
-        .bloque h3 {{
-            margin-top: 0;
-            color: #007bff;
-        }}
-        ul {{
-            padding-left: 20px;
-            margin: 0;
-        }}
-        li {{
-            margin: 8px 0;
-        }}
-        a {{
-            display: inline-block;
-            margin-top: 30px;
-            color: #007bff;
-            text-decoration: none;
-            font-weight: bold;
-        }}
-    </style>
+        <meta charset="UTF-8">
+        <title>Dashboard</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <style>
+            * {{
+                box-sizing: border-box;
+            }}
+            body {{
+                font-family: Arial, sans-serif;
+                margin: 0;
+                background: linear-gradient(135deg, #eff6ff, #f8fafc);
+                color: #1f2937;
+            }}
+            .wrap {{
+                max-width: 1280px;
+                margin: 0 auto;
+                padding: 28px 18px 40px 18px;
+            }}
+            .hero {{
+                background: linear-gradient(135deg, #2563eb, #1e40af);
+                color: white;
+                border-radius: 22px;
+                padding: 28px;
+                box-shadow: 0 18px 40px rgba(37, 99, 235, 0.25);
+                margin-bottom: 24px;
+            }}
+            .hero h1 {{
+                margin: 0 0 10px 0;
+                font-size: 30px;
+            }}
+            .hero p {{
+                margin: 0;
+                opacity: 0.95;
+                font-size: 16px;
+            }}
+            .stats {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+                gap: 18px;
+                margin: 24px 0;
+            }}
+            .stat {{
+                background: white;
+                border-radius: 18px;
+                padding: 22px;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            }}
+            .stat .label {{
+                color: #64748b;
+                font-size: 14px;
+                margin-bottom: 8px;
+            }}
+            .stat .value {{
+                font-size: 30px;
+                font-weight: 700;
+                color: #2563eb;
+            }}
+            .layout {{
+                display: grid;
+                grid-template-columns: 2fr 1fr;
+                gap: 18px;
+                align-items: start;
+            }}
+            .left-column {{
+                display: grid;
+                gap: 18px;
+            }}
+            .grid-two {{
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 18px;
+            }}
+            .panel {{
+                background: white;
+                border-radius: 18px;
+                padding: 20px;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+            }}
+            .panel h3 {{
+                margin: 0 0 16px 0;
+                color: #1d4ed8;
+                font-size: 19px;
+            }}
+            .panel canvas {{
+                width: 100% !important;
+                height: 320px !important;
+            }}
+            .side-list {{
+                margin: 0;
+                padding-left: 18px;
+            }}
+            .side-list li {{
+                margin-bottom: 12px;
+                line-height: 1.45;
+            }}
+            .tag {{
+                display: inline-block;
+                padding: 4px 10px;
+                border-radius: 999px;
+                background: #dbeafe;
+                color: #1d4ed8;
+                font-size: 12px;
+                font-weight: bold;
+                margin-bottom: 10px;
+            }}
+            .actions {{
+                margin-top: 24px;
+                text-align: center;
+            }}
+            .btn {{
+                display: inline-block;
+                text-decoration: none;
+                margin: 8px;
+                padding: 12px 18px;
+                border-radius: 12px;
+                font-weight: bold;
+                color: white;
+                background: #2563eb;
+            }}
+            .btn.secondary {{
+                background: #0f172a;
+            }}
+            .mini-table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 6px;
+            }}
+            .mini-table th, .mini-table td {{
+                text-align: left;
+                padding: 10px 8px;
+                border-bottom: 1px solid #e5e7eb;
+                font-size: 14px;
+            }}
+            .mini-table th {{
+                color: #64748b;
+            }}
+            @media (max-width: 980px) {{
+                .layout {{
+                    grid-template-columns: 1fr;
+                }}
+                .grid-two {{
+                    grid-template-columns: 1fr;
+                }}
+            }}
+        </style>
     </head>
     <body>
-        <div class="contenedor">
-            <h2 class="titulo">Dashboard de Estadísticas</h2>
+        <div class="wrap">
+            <div class="hero">
+                <h1>Dashboard de Personas</h1>
+                <p>Resumen general de edades, generaciones, signos, estaciones y meses de nacimiento.</p>
+            </div>
 
-            <div class="resumen">
-                <div class="card">
-                    <h3>Total de personas</h3>
-                    <p>{total}</p>
+            <div class="stats">
+                <div class="stat">
+                    <div class="label">Total de personas</div>
+                    <div class="value">{total}</div>
                 </div>
-                <div class="card">
-                    <h3>Edad promedio</h3>
-                    <p>{edad_promedio}</p>
+                <div class="stat">
+                    <div class="label">Edad promedio</div>
+                    <div class="value">{edad_promedio}</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Edad mínima</div>
+                    <div class="value">{edad_min}</div>
+                </div>
+                <div class="stat">
+                    <div class="label">Edad máxima</div>
+                    <div class="value">{edad_max}</div>
                 </div>
             </div>
 
-            <div class="bloques">
-                <div class="bloque">
-                    <h3>Por signo zodiacal</h3>
-                    <ul>
-    """
+            <div class="layout">
+                <div class="left-column">
+                    <div class="grid-two">
+                        <div class="panel">
+                            <div class="tag">Distribución</div>
+                            <h3>Por signo zodiacal</h3>
+                            <canvas id="graficoSignos"></canvas>
+                        </div>
 
-    if signos:
-        for signo, cantidad in sorted(signos.items()):
-            html += f"<li>{signo}: {cantidad}</li>"
-    else:
-        html += "<li>No hay datos</li>"
+                        <div class="panel">
+                            <div class="tag">Distribución</div>
+                            <h3>Por estación de nacimiento</h3>
+                            <canvas id="graficoEstaciones"></canvas>
+                        </div>
+                    </div>
 
-    html += """
-                    </ul>
+                    <div class="grid-two">
+                        <div class="panel">
+                            <div class="tag">Demografía</div>
+                            <h3>Por generación</h3>
+                            <canvas id="graficoGeneraciones"></canvas>
+                        </div>
+
+                        <div class="panel">
+                            <div class="tag">Temporal</div>
+                            <h3>Por mes de nacimiento</h3>
+                            <canvas id="graficoMeses"></canvas>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="bloque">
-                    <h3>Por estación de nacimiento</h3>
-                    <ul>
+                <div class="right-column">
+                    <div class="panel">
+                        <div class="tag">Ranking</div>
+                        <h3>Indicadores destacados</h3>
+                        <table class="mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Resultado</th>
+                                    <th>Cantidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
     """
 
-    if estaciones:
-        for estacion, cantidad in sorted(estaciones.items()):
-            html += f"<li>{estacion}: {cantidad}</li>"
+    if ranking:
+        for categoria, nombre, cantidad in ranking:
+            html += f"""
+                                <tr>
+                                    <td>{categoria}</td>
+                                    <td>{nombre}</td>
+                                    <td>{cantidad}</td>
+                                </tr>
+            """
     else:
-        html += "<li>No hay datos</li>"
+        html += """
+                                <tr>
+                                    <td colspan="3">No hay datos</td>
+                                </tr>
+        """
 
-    html += """
-                    </ul>
-                </div>
+    html += f"""
+                            </tbody>
+                        </table>
+                    </div>
 
-                <div class="bloque">
-                    <h3>Por generación</h3>
-                    <ul>
-    """
-
-    if generaciones:
-        for generacion, cantidad in sorted(generaciones.items()):
-            html += f"<li>{generacion}: {cantidad}</li>"
-    else:
-        html += "<li>No hay datos</li>"
-
-    html += """
-                    </ul>
+                    <div class="panel">
+                        <div class="tag">Lectura rápida</div>
+                        <h3>Resumen útil</h3>
+                        <ul class="side-list">
+                            <li><strong>Signo dominante:</strong> {signo_top}</li>
+                            <li><strong>Estación dominante:</strong> {estacion_top}</li>
+                            <li><strong>Generación dominante:</strong> {generacion_top}</li>
+                            <li><strong>Meses analizados:</strong> 12</li>
+                            <li><strong>Base total:</strong> {total} registros</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
-            <a href="/">← Volver al inicio</a>
+            <div class="actions">
+                <a class="btn" href="/ver">Ver personas</a>
+                <a class="btn secondary" href="/">Volver al inicio</a>
+            </div>
         </div>
+
+        <script>
+            const signosLabels = {signos_labels};
+            const signosValues = {signos_values};
+
+            const estacionesLabels = {estaciones_labels};
+            const estacionesValues = {estaciones_values};
+
+            const generacionesLabels = {generaciones_labels};
+            const generacionesValues = {generaciones_values};
+
+            const mesesLabels = {meses_labels};
+            const mesesValues = {meses_values};
+
+            new Chart(document.getElementById('graficoSignos'), {{
+                type: 'pie',
+                data: {{
+                    labels: signosLabels,
+                    datasets: [{{
+                        label: 'Cantidad',
+                        data: signosValues
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    plugins: {{
+                        legend: {{
+                            position: 'bottom'
+                        }}
+                    }}
+                }}
+            }});
+
+            new Chart(document.getElementById('graficoEstaciones'), {{
+                type: 'doughnut',
+                data: {{
+                    labels: estacionesLabels,
+                    datasets: [{{
+                        label: 'Cantidad',
+                        data: estacionesValues
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    plugins: {{
+                        legend: {{
+                            position: 'bottom'
+                        }}
+                    }}
+                }}
+            }});
+
+            new Chart(document.getElementById('graficoGeneraciones'), {{
+                type: 'bar',
+                data: {{
+                    labels: generacionesLabels,
+                    datasets: [{{
+                        label: 'Cantidad',
+                        data: generacionesValues
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    plugins: {{
+                        legend: {{
+                            display: false
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            ticks: {{
+                                precision: 0
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+
+            new Chart(document.getElementById('graficoMeses'), {{
+                type: 'line',
+                data: {{
+                    labels: mesesLabels,
+                    datasets: [{{
+                        label: 'Nacimientos por mes',
+                        data: mesesValues,
+                        tension: 0.3,
+                        fill: false
+                    }}]
+                }},
+                options: {{
+                    responsive: true,
+                    plugins: {{
+                        legend: {{
+                            position: 'bottom'
+                        }}
+                    }},
+                    scales: {{
+                        y: {{
+                            beginAtZero: true,
+                            ticks: {{
+                                precision: 0
+                            }}
+                        }}
+                    }}
+                }}
+            }});
+        </script>
     </body>
     </html>
     """
@@ -671,44 +979,47 @@ def editar_form(persona_id: int):
     return f"""
     <html>
     <head>
+    <meta charset="UTF-8">
     <style>
         body {{
             font-family: Arial;
-            background-color: #f4f6f8;
+            background: linear-gradient(135deg, #eef2ff, #f8fafc);
             text-align: center;
+            margin: 0;
+            padding: 40px 20px;
         }}
         .card {{
             background: white;
-            padding: 20px;
-            margin: 50px auto;
-            width: 320px;
-            border-radius: 12px;
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            padding: 24px;
+            margin: 30px auto;
+            width: 340px;
+            border-radius: 16px;
+            box-shadow: 0 10px 24px rgba(0,0,0,0.10);
         }}
         input {{
-            width: 90%;
-            padding: 10px;
-            margin: 6px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
+            width: 92%;
+            padding: 12px;
+            margin: 7px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
         }}
         button {{
-            background: #28a745;
+            background: #16a34a;
             color: white;
-            padding: 10px;
+            padding: 12px;
             border: none;
-            border-radius: 6px;
+            border-radius: 10px;
             cursor: pointer;
             width: 95%;
             font-weight: bold;
         }}
         button:hover {{
-            background: #1e7e34;
+            background: #15803d;
         }}
         a {{
             display: block;
             margin-top: 15px;
-            color: #007bff;
+            color: #2563eb;
             text-decoration: none;
             font-weight: bold;
         }}
@@ -720,8 +1031,8 @@ def editar_form(persona_id: int):
             <form action="/actualizar/{persona[0]}" method="post">
                 <input name="nombre" value="{persona[1]}" required><br>
                 <input name="anio" type="number" value="{persona[2]}" required><br>
-                <input name="mes" type="number" value="{persona[3]}" required><br>
-                <input name="dia" type="number" value="{persona[4]}" required><br><br>
+                <input name="mes" type="number" value="{persona[3]}" min="1" max="12" required><br>
+                <input name="dia" type="number" value="{persona[4]}" min="1" max="31" required><br><br>
                 <button type="submit">Guardar cambios</button>
             </form>
             <a href="/ver">Volver</a>
