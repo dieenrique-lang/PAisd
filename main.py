@@ -74,14 +74,13 @@ def signo_zodiacal(dia, mes):
 
 
 def estacion_sur(dia, mes):
-    dia = int(dia)
     mes = int(mes)
 
-    if (mes == 12 and dia >= 21) or mes in [1, 2] or (mes == 3 and dia <= 20):
+    if mes in [12, 1, 2]:
         return "Verano"
-    elif (mes == 3 and dia >= 21) or mes in [4, 5] or (mes == 6 and dia <= 20):
+    elif mes in [3, 4, 5]:
         return "Otoño"
-    elif (mes == 6 and dia >= 21) or mes in [7, 8] or (mes == 9 and dia <= 22):
+    elif mes in [6, 7, 8]:
         return "Invierno"
     else:
         return "Primavera"
