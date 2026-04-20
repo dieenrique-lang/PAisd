@@ -192,6 +192,10 @@ def inicio():
     <head>
     <meta charset="UTF-8">
     <title>Agenda de Personas</title>
+
+    <!-- ICONOS -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
     <style>
         * {
             box-sizing: border-box;
@@ -204,217 +208,207 @@ def inicio():
             display: flex;
             justify-content: center;
             align-items: center;
-            overflow: hidden;
-            position: relative;
             background: linear-gradient(135deg, #0f172a, #1d4ed8, #38bdf8, #7c3aed);
             background-size: 300% 300%;
-            animation: fondoPremium 12s ease infinite;
+            animation: fondo 12s ease infinite;
         }
 
-        @keyframes fondoPremium {
+        @keyframes fondo {
             0% { background-position: 0% 50%; }
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
 
-        .bg-blur {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(70px);
-            opacity: 0.35;
-            z-index: 0;
-        }
-
-        .blur1 {
-            width: 260px;
-            height: 260px;
-            background: #60a5fa;
-            top: 40px;
-            left: 40px;
-        }
-
-        .blur2 {
-            width: 300px;
-            height: 300px;
-            background: #a78bfa;
-            bottom: 40px;
-            right: 60px;
-        }
-
-        .blur3 {
-            width: 220px;
-            height: 220px;
-            background: #22d3ee;
-            bottom: 120px;
-            left: 120px;
-        }
-
         .card {
-            position: relative;
-            z-index: 1;
-            width: 390px;
-            padding: 34px 30px;
+            width: 400px;
+            padding: 36px;
             border-radius: 24px;
-            background: rgba(255, 255, 255, 0.14);
-            border: 1px solid rgba(255, 255, 255, 0.22);
+            background: rgba(255, 255, 255, 0.15);
             backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.28);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.3);
             text-align: center;
             color: white;
-            animation: subir 0.7s ease;
         }
 
-        @keyframes subir {
-            from {
-                opacity: 0;
-                transform: translateY(24px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        /* 🔷 HEADER MARCA */
+        .brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 10px;
         }
 
-        .badge {
-            display: inline-block;
-            padding: 7px 14px;
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.18);
-            border: 1px solid rgba(255, 255, 255, 0.20);
-            font-size: 12px;
-            font-weight: bold;
-            letter-spacing: 0.4px;
-            margin-bottom: 16px;
+        .logo {
+            width: 42px;
+            height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        h2 {
-            margin: 0 0 10px 0;
-            font-size: 30px;
-            font-weight: 800;
+        .logo i {
+            color: white;
         }
 
-        .sub {
-            margin-bottom: 24px;
-            color: rgba(255, 255, 255, 0.88);
-            font-size: 14px;
-            line-height: 1.5;
+        h1 {
+            margin: 0;
+            font-size: 26px;
         }
 
+        .subtitle {
+            font-size: 13px;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 20px;
+        }
+
+        /* 🔷 INPUTS CON ICONOS */
         .input-group {
             position: relative;
-            margin-bottom: 12px;
+            margin-bottom: 14px;
+        }
+
+        .input-group i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            width: 18px;
+            height: 18px;
         }
 
         input {
             width: 100%;
-            padding: 14px 14px;
-            border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
-            background: rgba(255, 255, 255, 0.92);
-            color: #0f172a;
-            font-size: 15px;
+            padding: 14px 14px 14px 38px;
+            border-radius: 12px;
+            border: none;
             outline: none;
-            transition: 0.2s ease;
+            font-size: 14px;
         }
 
         input:focus {
-            transform: translateY(-1px);
-            border-color: #93c5fd;
-            box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.25);
+            box-shadow: 0 0 0 2px #60a5fa;
         }
 
+        /* 🔷 BOTÓN */
         button {
             width: 100%;
             padding: 14px;
-            margin-top: 8px;
+            border-radius: 12px;
             border: none;
-            border-radius: 14px;
-            cursor: pointer;
-            font-size: 15px;
             font-weight: bold;
-            color: white;
+            cursor: pointer;
             background: linear-gradient(135deg, #2563eb, #1e40af);
-            box-shadow: 0 14px 24px rgba(37, 99, 235, 0.35);
-            transition: 0.22s ease;
+            color: white;
+            margin-top: 10px;
+            transition: 0.2s;
         }
 
         button:hover {
-            transform: translateY(-2px) scale(1.01);
-            box-shadow: 0 18px 30px rgba(37, 99, 235, 0.45);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(37,99,235,0.4);
         }
 
+        /* 🔷 LINKS */
         .links {
             margin-top: 18px;
             display: grid;
             gap: 10px;
         }
 
-        a {
-            display: block;
-            padding: 11px 14px;
-            border-radius: 12px;
+        .link {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.15);
             text-decoration: none;
-            font-weight: bold;
             color: white;
-            background: rgba(255, 255, 255, 0.10);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            transition: 0.2s ease;
+            font-weight: bold;
+            transition: 0.2s;
         }
 
-        a:hover {
-            transform: translateY(-1px);
-            background: rgba(255, 255, 255, 0.16);
+        .link:hover {
+            background: rgba(255,255,255,0.25);
         }
 
-        .footer-note {
-            margin-top: 16px;
+        .footer {
+            margin-top: 15px;
             font-size: 12px;
-            color: rgba(255, 255, 255, 0.72);
+            color: rgba(255,255,255,0.7);
         }
     </style>
     </head>
-    <body>
-        <div class="bg-blur blur1"></div>
-        <div class="bg-blur blur2"></div>
-        <div class="bg-blur blur3"></div>
 
+    <body>
         <div class="card">
-            <div class="badge">VERSIÓN PREMIUM</div>
-            <h2>Agenda de Personas</h2>
-            <div class="sub">
-                Registra personas, consulta fichas detalladas y revisa estadísticas en un dashboard visual.
+
+            <!-- 🔷 ENCABEZADO -->
+            <div class="brand">
+                <div class="logo">
+                    <i data-lucide="users"></i>
+                </div>
+                <h1>PeopleApp</h1>
             </div>
 
+            <div class="subtitle">
+                Gestión inteligente de personas + dashboard visual
+            </div>
+
+            <!-- 🔷 FORM -->
             <form action="/guardar" method="post">
+
                 <div class="input-group">
+                    <i data-lucide="user"></i>
                     <input name="nombre" placeholder="Nombre" required>
                 </div>
 
                 <div class="input-group">
-                    <input name="anio" placeholder="Año" type="number" required>
+                    <i data-lucide="calendar"></i>
+                    <input name="anio" type="number" placeholder="Año" required>
                 </div>
 
                 <div class="input-group">
-                    <input name="mes" placeholder="Mes" type="number" min="1" max="12" required>
+                    <i data-lucide="calendar-days"></i>
+                    <input name="mes" type="number" placeholder="Mes" min="1" max="12" required>
                 </div>
 
                 <div class="input-group">
-                    <input name="dia" placeholder="Día" type="number" min="1" max="31" required>
+                    <i data-lucide="calendar-check"></i>
+                    <input name="dia" type="number" placeholder="Día" min="1" max="31" required>
                 </div>
 
-                <button type="submit">Guardar persona</button>
+                <button type="submit">
+                    Guardar persona
+                </button>
             </form>
 
+            <!-- 🔷 LINKS -->
             <div class="links">
-                <a href="/ver">Ver personas</a>
-                <a href="/dashboard">Abrir dashboard</a>
+                <a class="link" href="/ver">
+                    <i data-lucide="list"></i>
+                    Ver personas
+                </a>
+
+                <a class="link" href="/dashboard">
+                    <i data-lucide="bar-chart-3"></i>
+                    Abrir dashboard
+                </a>
             </div>
 
-            <div class="footer-note">
-                Diseño moderno con efecto glass, fondo animado y estilo tipo app.
+            <div class="footer">
+                UI Premium · estilo aplicación real
             </div>
         </div>
+
+        <script>
+            lucide.createIcons();
+        </script>
     </body>
     </html>
     """
