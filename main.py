@@ -236,6 +236,7 @@ def inicio():
             </form>
 
             <a href="/ver">Ver personas</a>
+            <a href="/dashboard">Ver dashboard</a>
         </div>
     </body>
     </html>
@@ -361,6 +362,7 @@ def ver():
     </table>
 
     <a class="volver" href="/">Volver</a>
+    <a class="volver" href="/dashboard">Ir al dashboard</a>
     </body>
     </html>
     """
@@ -465,6 +467,185 @@ def detalle_persona(persona_id: int):
             </div>
 
             <a href="/ver">← Volver al listado</a>
+        </div>
+    </body>
+    </html>
+    """
+
+    return html
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard():
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, nombre, anio, mes, dia, edad
+                FROM personas
+                ORDER BY id
+            """)
+            personas = cursor.fetchall()
+
+    total = len(personas)
+
+    if total > 0:
+        edad_promedio = round(sum(p[5] for p in personas) / total, 1)
+    else:
+        edad_promedio = 0
+
+    signos = {}
+    estaciones = {}
+    generaciones = {}
+
+    for persona in personas:
+        _, nombre, anio, mes, dia, edad = persona
+
+        signo = signo_zodiacal(dia, mes)
+        estacion = estacion_sur(dia, mes)
+        generacion = generacion_por_anio(anio)
+
+        signos[signo] = signos.get(signo, 0) + 1
+        estaciones[estacion] = estaciones.get(estacion, 0) + 1
+        generaciones[generacion] = generaciones.get(generacion, 0) + 1
+
+    html = f"""
+    <html>
+    <head>
+    <style>
+        body {{
+            font-family: Arial;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 30px;
+            text-align: center;
+        }}
+        .contenedor {{
+            max-width: 1000px;
+            margin: auto;
+        }}
+        .titulo {{
+            color: #007bff;
+            margin-bottom: 25px;
+        }}
+        .resumen {{
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }}
+        .card {{
+            background: white;
+            padding: 20px;
+            min-width: 220px;
+            border-radius: 14px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+        }}
+        .card h3 {{
+            margin: 0 0 10px 0;
+            color: #444;
+        }}
+        .card p {{
+            font-size: 28px;
+            font-weight: bold;
+            color: #007bff;
+            margin: 0;
+        }}
+        .bloques {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+        }}
+        .bloque {{
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+            padding: 20px;
+            text-align: left;
+        }}
+        .bloque h3 {{
+            margin-top: 0;
+            color: #007bff;
+        }}
+        ul {{
+            padding-left: 20px;
+            margin: 0;
+        }}
+        li {{
+            margin: 8px 0;
+        }}
+        a {{
+            display: inline-block;
+            margin-top: 30px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+        }}
+    </style>
+    </head>
+    <body>
+        <div class="contenedor">
+            <h2 class="titulo">Dashboard de Estadísticas</h2>
+
+            <div class="resumen">
+                <div class="card">
+                    <h3>Total de personas</h3>
+                    <p>{total}</p>
+                </div>
+                <div class="card">
+                    <h3>Edad promedio</h3>
+                    <p>{edad_promedio}</p>
+                </div>
+            </div>
+
+            <div class="bloques">
+                <div class="bloque">
+                    <h3>Por signo zodiacal</h3>
+                    <ul>
+    """
+
+    if signos:
+        for signo, cantidad in sorted(signos.items()):
+            html += f"<li>{signo}: {cantidad}</li>"
+    else:
+        html += "<li>No hay datos</li>"
+
+    html += """
+                    </ul>
+                </div>
+
+                <div class="bloque">
+                    <h3>Por estación de nacimiento</h3>
+                    <ul>
+    """
+
+    if estaciones:
+        for estacion, cantidad in sorted(estaciones.items()):
+            html += f"<li>{estacion}: {cantidad}</li>"
+    else:
+        html += "<li>No hay datos</li>"
+
+    html += """
+                    </ul>
+                </div>
+
+                <div class="bloque">
+                    <h3>Por generación</h3>
+                    <ul>
+    """
+
+    if generaciones:
+        for generacion, cantidad in sorted(generaciones.items()):
+            html += f"<li>{generacion}: {cantidad}</li>"
+    else:
+        html += "<li>No hay datos</li>"
+
+    html += """
+                    </ul>
+                </div>
+            </div>
+
+            <a href="/">← Volver al inicio</a>
         </div>
     </body>
     </html>
