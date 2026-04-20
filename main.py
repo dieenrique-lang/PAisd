@@ -191,113 +191,229 @@ def inicio():
     <html>
     <head>
     <meta charset="UTF-8">
-   <style>
-    body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        height: 100vh;
-        display: flex;
-        justify-content: center;
-        align-items: center;
+    <title>Agenda de Personas</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
 
-        /* 🔥 Fondo llamativo profesional */
-        background: linear-gradient(135deg, #1e3a8a, #2563eb, #38bdf8);
-        background-size: 300% 300%;
-        animation: gradientMove 8s ease infinite;
-    }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+            background: linear-gradient(135deg, #0f172a, #1d4ed8, #38bdf8, #7c3aed);
+            background-size: 300% 300%;
+            animation: fondoPremium 12s ease infinite;
+        }
 
-    @keyframes gradientMove {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
+        @keyframes fondoPremium {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
 
-    .card {
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        padding: 30px;
-        width: 360px;
-        border-radius: 20px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.25);
-        text-align: center;
-    }
+        .bg-blur {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(70px);
+            opacity: 0.35;
+            z-index: 0;
+        }
 
-    h2 {
-        margin-top: 0;
-        color: #1e3a8a;
-        font-size: 26px;
-    }
+        .blur1 {
+            width: 260px;
+            height: 260px;
+            background: #60a5fa;
+            top: 40px;
+            left: 40px;
+        }
 
-    .sub {
-        color: #64748b;
-        margin-bottom: 20px;
-        font-size: 14px;
-    }
+        .blur2 {
+            width: 300px;
+            height: 300px;
+            background: #a78bfa;
+            bottom: 40px;
+            right: 60px;
+        }
 
-    input {
-        width: 92%;
-        padding: 12px;
-        margin: 8px;
-        border-radius: 10px;
-        border: 1px solid #d1d5db;
-        font-size: 15px;
-        transition: 0.2s;
-    }
+        .blur3 {
+            width: 220px;
+            height: 220px;
+            background: #22d3ee;
+            bottom: 120px;
+            left: 120px;
+        }
 
-    input:focus {
-        outline: none;
-        border-color: #2563eb;
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-    }
+        .card {
+            position: relative;
+            z-index: 1;
+            width: 390px;
+            padding: 34px 30px;
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.14);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.28);
+            text-align: center;
+            color: white;
+            animation: subir 0.7s ease;
+        }
 
-    button {
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color: white;
-        padding: 12px;
-        border: none;
-        border-radius: 10px;
-        cursor: pointer;
-        width: 95%;
-        font-weight: bold;
-        font-size: 15px;
-        transition: 0.2s;
-    }
+        @keyframes subir {
+            from {
+                opacity: 0;
+                transform: translateY(24px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
 
-    button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
-    }
+        .badge {
+            display: inline-block;
+            padding: 7px 14px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0.20);
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0.4px;
+            margin-bottom: 16px;
+        }
 
-    a {
-        display: block;
-        margin-top: 14px;
-        color: #1e3a8a;
-        text-decoration: none;
-        font-weight: bold;
-        transition: 0.2s;
-    }
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 30px;
+            font-weight: 800;
+        }
 
-    a:hover {
-        color: #2563eb;
-        transform: translateX(3px);
-    }
-</style>
+        .sub {
+            margin-bottom: 24px;
+            color: rgba(255, 255, 255, 0.88);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 12px;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            background: rgba(255, 255, 255, 0.92);
+            color: #0f172a;
+            font-size: 15px;
+            outline: none;
+            transition: 0.2s ease;
+        }
+
+        input:focus {
+            transform: translateY(-1px);
+            border-color: #93c5fd;
+            box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.25);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 8px;
+            border: none;
+            border-radius: 14px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #2563eb, #1e40af);
+            box-shadow: 0 14px 24px rgba(37, 99, 235, 0.35);
+            transition: 0.22s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px) scale(1.01);
+            box-shadow: 0 18px 30px rgba(37, 99, 235, 0.45);
+        }
+
+        .links {
+            margin-top: 18px;
+            display: grid;
+            gap: 10px;
+        }
+
+        a {
+            display: block;
+            padding: 11px 14px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: bold;
+            color: white;
+            background: rgba(255, 255, 255, 0.10);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            transition: 0.2s ease;
+        }
+
+        a:hover {
+            transform: translateY(-1px);
+            background: rgba(255, 255, 255, 0.16);
+        }
+
+        .footer-note {
+            margin-top: 16px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.72);
+        }
+    </style>
     </head>
     <body>
+        <div class="bg-blur blur1"></div>
+        <div class="bg-blur blur2"></div>
+        <div class="bg-blur blur3"></div>
+
         <div class="card">
+            <div class="badge">VERSIÓN PREMIUM</div>
             <h2>Agenda de Personas</h2>
-            <div class="sub">Guarda personas y revisa estadísticas en tu dashboard</div>
+            <div class="sub">
+                Registra personas, consulta fichas detalladas y revisa estadísticas en un dashboard visual.
+            </div>
 
             <form action="/guardar" method="post">
-                <input name="nombre" placeholder="Nombre" required><br>
-                <input name="anio" placeholder="Año" type="number" required><br>
-                <input name="mes" placeholder="Mes" type="number" min="1" max="12" required><br>
-                <input name="dia" placeholder="Día" type="number" min="1" max="31" required><br><br>
-                <button type="submit">Guardar</button>
+                <div class="input-group">
+                    <input name="nombre" placeholder="Nombre" required>
+                </div>
+
+                <div class="input-group">
+                    <input name="anio" placeholder="Año" type="number" required>
+                </div>
+
+                <div class="input-group">
+                    <input name="mes" placeholder="Mes" type="number" min="1" max="12" required>
+                </div>
+
+                <div class="input-group">
+                    <input name="dia" placeholder="Día" type="number" min="1" max="31" required>
+                </div>
+
+                <button type="submit">Guardar persona</button>
             </form>
 
-            <a href="/ver">Ver personas</a>
-            <a href="/dashboard">Ver dashboard</a>
+            <div class="links">
+                <a href="/ver">Ver personas</a>
+                <a href="/dashboard">Abrir dashboard</a>
+            </div>
+
+            <div class="footer-note">
+                Diseño moderno con efecto glass, fondo animado y estilo tipo app.
+            </div>
         </div>
     </body>
     </html>
