@@ -1312,6 +1312,12 @@ def dashboard():
     </body>
     </html>
     """
+<div class="actions">
+    <a class="btn" href="/ver">Ver personas</a>
+    <a class="btn" href="/exportar/excel">Exportar Excel</a>
+    <a class="btn" href="/exportar/cumpleanos">Exportar cumpleaños</a>
+    <a class="btn secondary" href="/">Volver al inicio</a>
+</div>
 
     return html
 
