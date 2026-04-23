@@ -604,11 +604,10 @@ def guardar_visita(
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
             cursor.execute(
                 """
-                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion),
-            )
+             (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, ahora_chile())
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
 
@@ -620,11 +619,10 @@ def salida_visita(visita_id: int):
             cursor.execute(
                 """
                 UPDATE visitas
-                SET hora_salida = NOW()
+                SET hora_salida = %s
                 WHERE id = %s AND hora_salida IS NULL
                 """,
-                (visita_id,),
-            )
+                (ahora_chile(), visita_id)
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
 
@@ -658,7 +656,7 @@ def dashboard_condominio():
             top_deptos = cursor.fetchall()
 
     top_html = "".join(f"<li>{format_depto(d[0], d[1])}: {d[2]} visitas</li>" for d in top_deptos) or "<li>No hay datos</li>"
-    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ahora = ahora_chile().strftime("%Y-%m-%d %H:%M")
 
     contenido = f"""
     <div class="hero"><h1>Dashboard Condominio</h1><p>Resumen operativo para administración y comité.</p></div>
