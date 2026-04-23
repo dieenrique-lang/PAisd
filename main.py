@@ -181,6 +181,20 @@ def mes_nombre(mes):
     }
     return nombres.get(int(mes), f"Mes {mes}")
 
+def dias_para_proximo_cumple(mes, dia):
+    hoy = date.today()
+    mes = int(mes)
+    dia = int(dia)
+
+    cumple_este_anio = date(hoy.year, mes, dia)
+
+    if cumple_este_anio < hoy:
+        proximo_cumple = date(hoy.year + 1, mes, dia)
+    else:
+        proximo_cumple = cumple_este_anio
+
+    return (proximo_cumple - hoy).days
+
 
 crear_tabla()
 
