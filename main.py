@@ -13,6 +13,12 @@ import psycopg
 app = FastAPI()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esto-por-una-clave-secreta-larga")
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
+serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
+
 pool = ConnectionPool(
     conninfo=DATABASE_URL,
     min_size=1,
