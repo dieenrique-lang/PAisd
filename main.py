@@ -1444,3 +1444,21 @@ def exportar_excel():
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=personas.xlsx"}
     )
+@app.get("/exportar/cumpleanos")
+def exportar_cumpleanos():
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, nombre, anio, mes, dia, edad
+                FROM personas
+                ORDER BY mes, dia
+            """)
+            personas = cursor.fetchall()
+
+    archivo = crear_excel_personas(personas, solo_proximos_cumples=True)
+
+    return StreamingResponse(
+        archivo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=proximos_cumpleanos.xlsx"}
+    )
