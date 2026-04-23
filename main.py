@@ -668,7 +668,8 @@ def guardar(
 
 
 @app.get("/ver", response_class=HTMLResponse)
-def ver():
+def ver(admin_session: str | None = Cookie(default=None)):
+    es_admin = require_admin(admin_session)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -755,21 +756,45 @@ def ver():
     </tr>
     """
 
+<div class="links">
+    <a class="link" href="/ver">
+        <i data-lucide="list"></i>
+        Ver personas
+    </a>
+
+    <a class="link" href="/dashboard">
+        <i data-lucide="bar-chart-3"></i>
+        Abrir dashboard
+    </a>
+
+    <a class="link" href="/admin/login">
+        <i data-lucide="shield"></i>
+        Acceso administrador
+    </a>
+</div>
+    
     for persona in personas:
-        html += f"""
-        <tr>
-            <td><a class="nombre-link" href="/persona/{persona[0]}">{persona[1]}</a></td>
-            <td>{persona[5]}</td>
-            <td>{persona[4]}/{persona[3]}/{persona[2]}</td>
-            <td>
-                <a class="editar" href="/editar/{persona[0]}">Editar</a>
-                <a class="eliminar" href="/eliminar/{persona[0]}"
-                onclick="return confirm('¿Seguro que quieres eliminar?')">
-                Eliminar
-                </a>
-            </td>
-        </tr>
-        """
+       acciones = ""
+
+if es_admin:
+    acciones = f"""
+        <a class="editar" href="/editar/{persona[0]}">Editar</a>
+        <a class="eliminar" href="/eliminar/{persona[0]}"
+        onclick="return confirm('¿Seguro que quieres eliminar?')">
+        Eliminar
+        </a>
+    """
+else:
+    acciones = "<span style='color:#94a3b8;'>Solo admin</span>"
+
+html += f"""
+<tr>
+    <td><a class="nombre-link" href="/persona/{persona[0]}">{persona[1]}</a></td>
+    <td>{persona[5]}</td>
+    <td>{persona[4]}/{persona[3]}/{persona[2]}</td>
+    <td>{acciones}</td>
+</tr>
+"""
 
     html += """
     </table>
@@ -779,7 +804,11 @@ def ver():
     </body>
     </html>
     """
-
+if es_admin:
+    html += """
+    <a class="volver" href="/admin/logout">Cerrar sesión admin</a>
+    """
+    
     return html
 
 
@@ -1456,7 +1485,9 @@ def dashboard():
 
 
 @app.get("/editar/{persona_id}", response_class=HTMLResponse)
-def editar_form(persona_id: int):
+def editar_form(persona_id: int, admin_session: str | None = Cookie(default=None)):
+    if not require_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=303)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -1541,8 +1572,11 @@ def actualizar(
     nombre: str = Form(...),
     anio: int = Form(...),
     mes: int = Form(...),
-    dia: int = Form(...)
+    dia: int = Form(...),
+    admin_session: str | None = Cookie(default=None)
 ):
+    if not require_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=303)
     edad = calcular_edad(anio, mes, dia)
 
     with conectar() as conn:
@@ -1558,7 +1592,9 @@ def actualizar(
 
 
 @app.get("/eliminar/{persona_id}")
-def eliminar(persona_id: int):
+def eliminar(persona_id: int, admin_session: str | None = Cookie(default=None)):
+    if not require_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=303)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM personas WHERE id = %s", (persona_id,))
