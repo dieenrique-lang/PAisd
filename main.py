@@ -3,7 +3,6 @@ from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from fastapi import FastAPI, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
 from datetime import datetime, date
 import os
 import psycopg
@@ -1196,10 +1195,12 @@ def dashboard():
                 </div>
             </div>
 
-            <div class="actions">
-                <a class="btn" href="/ver">Ver personas</a>
-                <a class="btn secondary" href="/">Volver al inicio</a>
-            </div>
+           <div class="actions">
+    <a class="btn" href="/ver">Ver personas</a>
+    <a class="btn" href="/exportar/excel">Exportar Excel</a>
+    <a class="btn" href="/exportar/cumpleanos">Exportar cumpleaños</a>
+    <a class="btn secondary" href="/">Volver al inicio</a>
+</div>
         </div>
 
         <script>
@@ -1312,12 +1313,7 @@ def dashboard():
     </body>
     </html>
     """
-<div class="actions">
-    <a class="btn" href="/ver">Ver personas</a>
-    <a class="btn" href="/exportar/excel">Exportar Excel</a>
-    <a class="btn" href="/exportar/cumpleanos">Exportar cumpleaños</a>
-    <a class="btn secondary" href="/">Volver al inicio</a>
-</div>
+
 
     return html
 
