@@ -1,13 +1,15 @@
-from fastapi import FastAPI, Form, Cookie
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from datetime import datetime
+from html import escape
 from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
-from itsdangerous import URLSafeSerializer, BadSignature
-import bcrypt
 import os
+
+import bcrypt
 import psycopg
+from fastapi import Cookie, FastAPI, Form
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from itsdangerous import BadSignature, URLSafeSerializer
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
 
 app = FastAPI()
 
@@ -19,6 +21,7 @@ ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
 serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
 
 
+# ---------- Infraestructura ----------
 def conectar():
     return psycopg.connect(DATABASE_URL)
 
@@ -26,16 +29,18 @@ def conectar():
 def crear_tablas():
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS departamentos (
                     id SERIAL PRIMARY KEY,
                     torre TEXT,
                     numero TEXT NOT NULL,
                     UNIQUE(torre, numero)
                 )
-            """)
-
-            cursor.execute("""
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS residentes (
                     id SERIAL PRIMARY KEY,
                     nombre TEXT NOT NULL,
@@ -44,9 +49,10 @@ def crear_tablas():
                     tipo TEXT,
                     departamento_id INTEGER REFERENCES departamentos(id)
                 )
-            """)
-
-            cursor.execute("""
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS vehiculos (
                     id SERIAL PRIMARY KEY,
                     patente TEXT NOT NULL,
@@ -55,9 +61,10 @@ def crear_tablas():
                     color TEXT,
                     departamento_id INTEGER REFERENCES departamentos(id)
                 )
-            """)
-
-            cursor.execute("""
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS visitas (
                     id SERIAL PRIMARY KEY,
                     nombre TEXT NOT NULL,
@@ -68,10 +75,12 @@ def crear_tablas():
                     hora_ingreso TIMESTAMP DEFAULT NOW(),
                     hora_salida TIMESTAMP
                 )
-            """)
+                """
+            )
         conn.commit()
 
 
+# ---------- Auth admin ----------
 def crear_token_admin():
     return serializer.dumps({"admin": True})
 
@@ -89,116 +98,120 @@ def require_admin(token: str | None):
 def verificar_password_admin(password: str):
     if not ADMIN_PASSWORD_HASH:
         return False
-    return bcrypt.checkpw(
-        password.encode("utf-8"),
-        ADMIN_PASSWORD_HASH.encode("utf-8")
+    return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
+
+
+# ---------- Helpers UI ----------
+def h(value):
+    return escape(str(value or ""))
+
+
+def format_depto(torre, numero):
+    if torre and numero:
+        return f"{h(torre)}-{h(numero)}"
+    return h(torre or numero)
+
+
+def render_delete_action(es_admin: bool, href: str, confirm_text: str):
+    if not es_admin:
+        return "<span class='muted'>Solo admin</span>"
+    return (
+        f"<a class='btn red' href='{h(href)}' "
+        f"onclick=\"return confirm('{h(confirm_text)}')\">Eliminar</a>"
     )
 
 
-crear_tablas()
-
-
-def layout(titulo, contenido):
+def layout(titulo: str, contenido: str):
     return f"""
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>{titulo}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{h(titulo)}</title>
         <style>
+            :root {{
+                --bg:#eef2ff;
+                --surface:#ffffff;
+                --text:#0f172a;
+                --muted:#64748b;
+                --primary:#1d4ed8;
+                --primary-dark:#1e3a8a;
+                --danger:#dc2626;
+                --success:#16a34a;
+                --border:#dbe2ea;
+                --shadow:0 10px 28px rgba(15,23,42,.08);
+            }}
+            * {{ box-sizing: border-box; }}
             body {{
-                font-family: Arial, sans-serif;
-                background: #f4f6f8;
+                font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+                background: radial-gradient(circle at top left,#dbeafe,var(--bg));
                 margin: 0;
-                padding: 30px;
-                color: #1f2937;
+                padding: 32px 18px;
+                color: var(--text);
             }}
-            .wrap {{
-                max-width: 1100px;
-                margin: auto;
-            }}
+            .wrap {{ max-width: 1150px; margin: 0 auto; }}
             .hero {{
-                background: linear-gradient(135deg, #1d4ed8, #0f172a);
+                background: linear-gradient(125deg,var(--primary),var(--primary-dark));
                 color: white;
-                padding: 25px;
+                padding: 28px;
                 border-radius: 18px;
                 margin-bottom: 20px;
+                box-shadow: var(--shadow);
             }}
+            .hero h1 {{ margin: 0 0 6px; }}
+            .hero p {{ margin: 0; opacity: .92; }}
             .card {{
-                background: white;
+                background: var(--surface);
+                border: 1px solid var(--border);
                 padding: 22px;
                 border-radius: 16px;
-                box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+                box-shadow: var(--shadow);
                 margin-bottom: 18px;
             }}
+            .actions {{ display:flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }}
+            form {{ display: grid; grid-template-columns: repeat(auto-fit,minmax(210px,1fr)); gap: 10px; }}
+            form .full {{ grid-column: 1/-1; }}
             input, select, textarea {{
                 width: 100%;
-                padding: 11px;
-                margin: 7px 0;
-                border-radius: 9px;
-                border: 1px solid #d1d5db;
-                box-sizing: border-box;
-            }}
-            button, .btn {{
-                display: inline-block;
-                background: #2563eb;
-                color: white;
-                padding: 10px 15px;
+                padding: 10px 12px;
                 border-radius: 10px;
-                border: none;
-                text-decoration: none;
-                font-weight: bold;
-                cursor: pointer;
-                margin: 5px;
+                border: 1px solid #cbd5e1;
+                outline: none;
+                font-size: .95rem;
             }}
-            .btn.dark {{
-                background: #0f172a;
+            input:focus, select:focus, textarea:focus {{ border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.15); }}
+            button, .btn {{
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                background: var(--primary);
+                color:#fff;
+                border:none;
+                border-radius: 10px;
+                text-decoration:none;
+                padding: 9px 14px;
+                font-weight: 600;
+                cursor:pointer;
             }}
-            .btn.red {{
-                background: #dc2626;
-            }}
-            .btn.green {{
-                background: #16a34a;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                background: white;
-                border-radius: 14px;
-                overflow: hidden;
-            }}
-            th {{
-                background: #2563eb;
-                color: white;
-                padding: 12px;
-                text-align: left;
-            }}
-            td {{
-                padding: 10px;
-                border-bottom: 1px solid #e5e7eb;
-            }}
-            .grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-                gap: 16px;
-            }}
-            .stat {{
-                font-size: 32px;
-                font-weight: bold;
-                color: #2563eb;
-            }}
-            a {{
-                color: #2563eb;
-                font-weight: bold;
-            }}
+            .btn.dark {{ background:#0f172a; }}
+            .btn.red {{ background: var(--danger); }}
+            .btn.green {{ background: var(--success); }}
+            .muted {{ color: var(--muted); font-weight: 600; }}
+            table {{ width:100%; border-collapse: separate; border-spacing: 0; overflow:hidden; border: 1px solid var(--border); border-radius: 14px; }}
+            th {{ background: #eff6ff; color: #1e3a8a; text-align:left; padding: 11px; font-size:.92rem; }}
+            td {{ background:#fff; padding: 10px 11px; border-top: 1px solid var(--border); }}
+            .grid {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 14px; }}
+            .stat {{ font-size: 2rem; font-weight: 800; color: var(--primary); }}
         </style>
     </head>
     <body>
-        <div class="wrap">
-            {contenido}
-        </div>
+        <div class="wrap">{contenido}</div>
     </body>
     </html>
     """
+
+
+crear_tablas()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -206,16 +219,17 @@ def inicio():
     contenido = """
     <div class="hero">
         <h1>CondoControl</h1>
-        <p>Sistema simple de control de residentes, vehículos y visitas para condominios.</p>
+        <p>Sistema de control de residentes, vehículos y visitas para condominios.</p>
     </div>
-
     <div class="card">
         <h2>Menú principal</h2>
-        <a class="btn" href="/residentes">Residentes</a>
-        <a class="btn" href="/vehiculos">Vehículos</a>
-        <a class="btn" href="/visitas">Control de visitas</a>
-        <a class="btn" href="/dashboard-condominio">Dashboard</a>
-        <a class="btn dark" href="/admin/login">Acceso administrador</a>
+        <div class="actions">
+            <a class="btn" href="/residentes">Residentes</a>
+            <a class="btn" href="/vehiculos">Vehículos</a>
+            <a class="btn" href="/visitas">Control de visitas</a>
+            <a class="btn" href="/dashboard-condominio">Dashboard</a>
+            <a class="btn dark" href="/admin/login">Acceso administrador</a>
+        </div>
     </div>
     """
     return layout("CondoControl", contenido)
@@ -224,14 +238,14 @@ def inicio():
 @app.get("/admin/login", response_class=HTMLResponse)
 def admin_login_form():
     contenido = """
-    <div class="card" style="max-width:400px;margin:auto;">
+    <div class="card" style="max-width:460px;margin:auto;">
         <h2>Acceso administrador</h2>
         <form action="/admin/login" method="post">
             <input name="username" placeholder="Usuario" required>
             <input name="password" type="password" placeholder="Contraseña" required>
-            <button type="submit">Entrar</button>
+            <button class="full" type="submit">Entrar</button>
         </form>
-        <a href="/">Volver</a>
+        <div class="actions"><a class="btn dark" href="/">Volver</a></div>
     </div>
     """
     return layout("Login admin", contenido)
@@ -243,13 +257,7 @@ def admin_login(username: str = Form(...), password: str = Form(...)):
         return HTMLResponse("<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>", status_code=401)
 
     response = RedirectResponse(url="/residentes", status_code=303)
-    response.set_cookie(
-        key="admin_session",
-        value=crear_token_admin(),
-        httponly=True,
-        samesite="lax",
-        secure=False
-    )
+    response.set_cookie(key="admin_session", value=crear_token_admin(), httponly=True, samesite="lax", secure=False)
     return response
 
 
@@ -260,50 +268,62 @@ def admin_logout():
     return response
 
 
+def obtener_o_crear_departamento(cursor, torre, numero):
+    cursor.execute(
+        """
+        SELECT id FROM departamentos
+        WHERE COALESCE(torre, '') = COALESCE(%s, '') AND numero = %s
+        """,
+        (torre, numero),
+    )
+    dep = cursor.fetchone()
+    if dep:
+        return dep[0]
+
+    cursor.execute(
+        """
+        INSERT INTO departamentos (torre, numero)
+        VALUES (%s, %s)
+        RETURNING id
+        """,
+        (torre, numero),
+    )
+    return cursor.fetchone()[0]
+
+
 @app.get("/residentes", response_class=HTMLResponse)
 def residentes(admin_session: str | None = Cookie(default=None)):
     es_admin = require_admin(admin_session)
-
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT r.id, r.nombre, r.telefono, r.email, r.tipo, d.torre, d.numero
                 FROM residentes r
                 LEFT JOIN departamentos d ON r.departamento_id = d.id
                 ORDER BY r.id DESC
-            """)
-            residentes = cursor.fetchall()
+                """
+            )
+            data = cursor.fetchall()
 
-    filas = ""
-    for r in residentes:
-        acciones = ""
-        if es_admin:
-            acciones = f"""
-            <a class="btn red" href="/eliminar-residente/{r[0]}"
-            onclick="return confirm('¿Eliminar residente?')">Eliminar</a>
-            """
-        else:
-            acciones = "Solo admin"
-
-        filas += f"""
+    filas = "".join(
+        f"""
         <tr>
-            <td>{r[1]}</td>
-            <td>{r[5] or ''}-{r[6] or ''}</td>
-            <td>{r[2] or ''}</td>
-            <td>{r[3] or ''}</td>
-            <td>{r[4] or ''}</td>
-            <td>{acciones}</td>
+            <td>{h(r[1])}</td>
+            <td>{format_depto(r[5], r[6])}</td>
+            <td>{h(r[2])}</td>
+            <td>{h(r[3])}</td>
+            <td>{h(r[4])}</td>
+            <td>{render_delete_action(es_admin, f'/eliminar-residente/{r[0]}', '¿Eliminar residente?')}</td>
         </tr>
         """
+        for r in data
+    )
 
     logout = '<a class="btn dark" href="/admin/logout">Cerrar sesión admin</a>' if es_admin else ""
 
     contenido = f"""
-    <div class="hero">
-        <h1>Residentes</h1>
-        <p>Registro de residentes por departamento.</p>
-    </div>
-
+    <div class="hero"><h1>Residentes</h1><p>Registro de residentes por departamento.</p></div>
     <div class="card">
         <h2>Agregar residente</h2>
         <form action="/guardar-residente" method="post">
@@ -317,48 +337,23 @@ def residentes(admin_session: str | None = Cookie(default=None)):
             </select>
             <input name="torre" placeholder="Torre / Block">
             <input name="numero" placeholder="Departamento" required>
-            <button type="submit">Guardar residente</button>
+            <button class="full" type="submit">Guardar residente</button>
         </form>
     </div>
-
     <div class="card">
         <h2>Listado</h2>
         <table>
-            <tr>
-                <th>Nombre</th>
-                <th>Depto</th>
-                <th>Teléfono</th>
-                <th>Email</th>
-                <th>Tipo</th>
-                <th>Acción</th>
-            </tr>
+            <tr><th>Nombre</th><th>Depto</th><th>Teléfono</th><th>Email</th><th>Tipo</th><th>Acción</th></tr>
             {filas}
         </table>
     </div>
-
-    <a class="btn" href="/">Inicio</a>
-    <a class="btn" href="/dashboard-condominio">Dashboard</a>
-    {logout}
+    <div class="actions">
+        <a class="btn" href="/">Inicio</a>
+        <a class="btn" href="/dashboard-condominio">Dashboard</a>
+        {logout}
+    </div>
     """
     return layout("Residentes", contenido)
-
-
-def obtener_o_crear_departamento(cursor, torre, numero):
-    cursor.execute("""
-        SELECT id FROM departamentos
-        WHERE COALESCE(torre, '') = COALESCE(%s, '') AND numero = %s
-    """, (torre, numero))
-    dep = cursor.fetchone()
-
-    if dep:
-        return dep[0]
-
-    cursor.execute("""
-        INSERT INTO departamentos (torre, numero)
-        VALUES (%s, %s)
-        RETURNING id
-    """, (torre, numero))
-    return cursor.fetchone()[0]
 
 
 @app.post("/guardar-residente")
@@ -368,17 +363,19 @@ def guardar_residente(
     email: str = Form(""),
     tipo: str = Form("Residente"),
     torre: str = Form(""),
-    numero: str = Form(...)
+    numero: str = Form(...),
 ):
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (nombre, telefono, email, tipo, dep_id))
+                """,
+                (nombre, telefono, email, tipo, dep_id),
+            )
         conn.commit()
-
     return RedirectResponse(url="/residentes", status_code=303)
 
 
@@ -391,52 +388,36 @@ def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(def
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM residentes WHERE id = %s", (residente_id,))
         conn.commit()
-
     return RedirectResponse(url="/residentes", status_code=303)
 
 
 @app.get("/vehiculos", response_class=HTMLResponse)
 def vehiculos(admin_session: str | None = Cookie(default=None)):
     es_admin = require_admin(admin_session)
-
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT v.id, v.patente, v.marca, v.modelo, v.color, d.torre, d.numero
                 FROM vehiculos v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
                 ORDER BY v.id DESC
-            """)
-            vehiculos = cursor.fetchall()
+                """
+            )
+            data = cursor.fetchall()
 
-    filas = ""
-    for v in vehiculos:
-        acciones = ""
-        if es_admin:
-            acciones = f"""
-            <a class="btn red" href="/eliminar-vehiculo/{v[0]}"
-            onclick="return confirm('¿Eliminar vehículo?')">Eliminar</a>
-            """
-        else:
-            acciones = "Solo admin"
-
-        filas += f"""
+    filas = "".join(
+        f"""
         <tr>
-            <td>{v[1]}</td>
-            <td>{v[2] or ''}</td>
-            <td>{v[3] or ''}</td>
-            <td>{v[4] or ''}</td>
-            <td>{v[5] or ''}-{v[6] or ''}</td>
-            <td>{acciones}</td>
+            <td>{h(v[1])}</td><td>{h(v[2])}</td><td>{h(v[3])}</td><td>{h(v[4])}</td><td>{format_depto(v[5], v[6])}</td>
+            <td>{render_delete_action(es_admin, f'/eliminar-vehiculo/{v[0]}', '¿Eliminar vehículo?')}</td>
         </tr>
         """
+        for v in data
+    )
 
     contenido = f"""
-    <div class="hero">
-        <h1>Vehículos</h1>
-        <p>Registro de autos por departamento.</p>
-    </div>
-
+    <div class="hero"><h1>Vehículos</h1><p>Registro de autos por departamento.</p></div>
     <div class="card">
         <h2>Agregar vehículo</h2>
         <form action="/guardar-vehiculo" method="post">
@@ -446,26 +427,17 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
             <input name="color" placeholder="Color">
             <input name="torre" placeholder="Torre / Block">
             <input name="numero" placeholder="Departamento" required>
-            <button type="submit">Guardar vehículo</button>
+            <button class="full" type="submit">Guardar vehículo</button>
         </form>
     </div>
-
     <div class="card">
         <h2>Listado vehículos</h2>
         <table>
-            <tr>
-                <th>Patente</th>
-                <th>Marca</th>
-                <th>Modelo</th>
-                <th>Color</th>
-                <th>Depto</th>
-                <th>Acción</th>
-            </tr>
+            <tr><th>Patente</th><th>Marca</th><th>Modelo</th><th>Color</th><th>Depto</th><th>Acción</th></tr>
             {filas}
         </table>
     </div>
-
-    <a class="btn" href="/">Inicio</a>
+    <div class="actions"><a class="btn" href="/">Inicio</a></div>
     """
     return layout("Vehículos", contenido)
 
@@ -477,17 +449,19 @@ def guardar_vehiculo(
     modelo: str = Form(""),
     color: str = Form(""),
     torre: str = Form(""),
-    numero: str = Form(...)
+    numero: str = Form(...),
 ):
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO vehiculos (patente, marca, modelo, color, departamento_id)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (patente.upper(), marca, modelo, color, dep_id))
+                """,
+                (patente.upper(), marca, modelo, color, dep_id),
+            )
         conn.commit()
-
     return RedirectResponse(url="/vehiculos", status_code=303)
 
 
@@ -500,7 +474,6 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
         with conn.cursor() as cursor:
             cursor.execute("DELETE FROM vehiculos WHERE id = %s", (vehiculo_id,))
         conn.commit()
-
     return RedirectResponse(url="/vehiculos", status_code=303)
 
 
@@ -508,39 +481,36 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
 def visitas():
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT v.id, v.nombre, v.rut, d.torre, d.numero, v.autorizado_por,
                        v.observacion, v.hora_ingreso, v.hora_salida
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
                 ORDER BY v.id DESC
                 LIMIT 100
-            """)
-            visitas = cursor.fetchall()
+                """
+            )
+            data = cursor.fetchall()
 
     filas = ""
-    for v in visitas:
+    for v in data:
         estado = "Dentro" if v[8] is None else "Salió"
-        salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[8] is None else v[8]
-
+        salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[8] is None else h(v[8])
         filas += f"""
         <tr>
-            <td>{v[1]}</td>
-            <td>{v[2] or ''}</td>
-            <td>{v[3] or ''}-{v[4] or ''}</td>
-            <td>{v[5] or ''}</td>
-            <td>{v[7]}</td>
+            <td>{h(v[1])}</td>
+            <td>{h(v[2])}</td>
+            <td>{format_depto(v[3], v[4])}</td>
+            <td>{h(v[5])}</td>
+            <td>{h(v[7])}</td>
             <td>{estado}</td>
             <td>{salida}</td>
         </tr>
         """
 
     contenido = f"""
-    <div class="hero">
-        <h1>Control de visitas</h1>
-        <p>Vista simple para guardia: registrar ingreso y marcar salida.</p>
-    </div>
-
+    <div class="hero"><h1>Control de visitas</h1><p>Registro de ingreso y salida para conserjería.</p></div>
     <div class="card">
         <h2>Registrar ingreso</h2>
         <form action="/guardar-visita" method="post">
@@ -549,29 +519,21 @@ def visitas():
             <input name="torre" placeholder="Torre / Block">
             <input name="numero" placeholder="Departamento que visita" required>
             <input name="autorizado_por" placeholder="Autorizado por">
-            <textarea name="observacion" placeholder="Observación"></textarea>
-            <button type="submit">Registrar ingreso</button>
+            <textarea class="full" name="observacion" placeholder="Observación"></textarea>
+            <button class="full" type="submit">Registrar ingreso</button>
         </form>
     </div>
-
     <div class="card">
         <h2>Últimas visitas</h2>
         <table>
-            <tr>
-                <th>Visita</th>
-                <th>RUT</th>
-                <th>Depto</th>
-                <th>Autoriza</th>
-                <th>Ingreso</th>
-                <th>Estado</th>
-                <th>Salida</th>
-            </tr>
+            <tr><th>Visita</th><th>RUT</th><th>Depto</th><th>Autoriza</th><th>Ingreso</th><th>Estado</th><th>Salida</th></tr>
             {filas}
         </table>
     </div>
-
-    <a class="btn" href="/">Inicio</a>
-    <a class="btn" href="/exportar/visitas">Exportar visitas</a>
+    <div class="actions">
+        <a class="btn" href="/">Inicio</a>
+        <a class="btn" href="/exportar/visitas">Exportar visitas</a>
+    </div>
     """
     return layout("Visitas", contenido)
 
@@ -583,17 +545,19 @@ def guardar_visita(
     torre: str = Form(""),
     numero: str = Form(...),
     autorizado_por: str = Form(""),
-    observacion: str = Form("")
+    observacion: str = Form(""),
 ):
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO visitas (nombre, rut, departamento_id, autorizado_por, observacion)
                 VALUES (%s, %s, %s, %s, %s)
-            """, (nombre, rut, dep_id, autorizado_por, observacion))
+                """,
+                (nombre, rut, dep_id, autorizado_por, observacion),
+            )
         conn.commit()
-
     return RedirectResponse(url="/visitas", status_code=303)
 
 
@@ -601,13 +565,15 @@ def guardar_visita(
 def salida_visita(visita_id: int):
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 UPDATE visitas
                 SET hora_salida = NOW()
                 WHERE id = %s AND hora_salida IS NULL
-            """, (visita_id,))
+                """,
+                (visita_id,),
+            )
         conn.commit()
-
     return RedirectResponse(url="/visitas", status_code=303)
 
 
@@ -627,53 +593,35 @@ def dashboard_condominio():
             cursor.execute("SELECT COUNT(*) FROM visitas WHERE hora_salida IS NULL")
             visitas_dentro = cursor.fetchone()[0]
 
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT d.torre, d.numero, COUNT(v.id) AS total
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
                 GROUP BY d.torre, d.numero
                 ORDER BY total DESC
                 LIMIT 5
-            """)
+                """
+            )
             top_deptos = cursor.fetchall()
 
-    top_html = ""
-    for d in top_deptos:
-        top_html += f"<li>{d[0] or ''}-{d[1] or ''}: {d[2]} visitas</li>"
+    top_html = "".join(f"<li>{format_depto(d[0], d[1])}: {d[2]} visitas</li>" for d in top_deptos) or "<li>No hay datos</li>"
+    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
 
     contenido = f"""
-    <div class="hero">
-        <h1>Dashboard Condominio</h1>
-        <p>Resumen operativo para administración y comité.</p>
-    </div>
-
+    <div class="hero"><h1>Dashboard Condominio</h1><p>Resumen operativo para administración y comité.</p></div>
     <div class="grid">
-        <div class="card">
-            <h3>Residentes</h3>
-            <div class="stat">{total_residentes}</div>
-        </div>
-        <div class="card">
-            <h3>Vehículos</h3>
-            <div class="stat">{total_vehiculos}</div>
-        </div>
-        <div class="card">
-            <h3>Visitas hoy</h3>
-            <div class="stat">{visitas_hoy}</div>
-        </div>
-        <div class="card">
-            <h3>Visitas dentro</h3>
-            <div class="stat">{visitas_dentro}</div>
-        </div>
+        <div class="card"><h3>Residentes</h3><div class="stat">{total_residentes}</div></div>
+        <div class="card"><h3>Vehículos</h3><div class="stat">{total_vehiculos}</div></div>
+        <div class="card"><h3>Visitas hoy</h3><div class="stat">{visitas_hoy}</div></div>
+        <div class="card"><h3>Visitas dentro</h3><div class="stat">{visitas_dentro}</div></div>
     </div>
-
-    <div class="card">
-        <h2>Top departamentos con más visitas</h2>
-        <ul>{top_html or '<li>No hay datos</li>'}</ul>
+    <div class="card"><h2>Top departamentos con más visitas</h2><ul>{top_html}</ul><p class="muted">Actualizado: {h(ahora)}</p></div>
+    <div class="actions">
+        <a class="btn" href="/">Inicio</a>
+        <a class="btn" href="/visitas">Control visitas</a>
+        <a class="btn" href="/exportar/visitas">Exportar visitas</a>
     </div>
-
-    <a class="btn" href="/">Inicio</a>
-    <a class="btn" href="/visitas">Control visitas</a>
-    <a class="btn" href="/exportar/visitas">Exportar visitas</a>
     """
     return layout("Dashboard Condominio", contenido)
 
@@ -682,13 +630,15 @@ def dashboard_condominio():
 def exportar_visitas():
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT v.id, v.nombre, v.rut, d.torre, d.numero, v.autorizado_por,
                        v.observacion, v.hora_ingreso, v.hora_salida
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
                 ORDER BY v.id DESC
-            """)
+                """
+            )
             visitas = cursor.fetchall()
 
     wb = Workbook()
@@ -696,8 +646,15 @@ def exportar_visitas():
     ws.title = "Visitas"
 
     headers = [
-        "ID", "Nombre visita", "RUT", "Torre", "Departamento",
-        "Autorizado por", "Observación", "Hora ingreso", "Hora salida"
+        "ID",
+        "Nombre visita",
+        "RUT",
+        "Torre",
+        "Departamento",
+        "Autorizado por",
+        "Observación",
+        "Hora ingreso",
+        "Hora salida",
     ]
     ws.append(headers)
 
@@ -710,8 +667,8 @@ def exportar_visitas():
         cell.font = font
         cell.alignment = align
 
-    for v in visitas:
-        ws.append(list(v))
+    for visita in visitas:
+        ws.append(list(visita))
 
     for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I"]:
         ws.column_dimensions[col].width = 22
@@ -723,7 +680,7 @@ def exportar_visitas():
     return StreamingResponse(
         archivo,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=visitas_condominio.xlsx"}
+        headers={"Content-Disposition": "attachment; filename=visitas_condominio.xlsx"},
     )
 
 
