@@ -756,28 +756,28 @@ def ver(admin_session: str | None = Cookie(default=None)):
     </tr>
     """
     
-    for persona in personas:
-       acciones = ""
+   for persona in personas:
+    acciones = ""
 
-if es_admin:
-    acciones = f"""
+    if es_admin:
+        acciones = f"""
         <a class="editar" href="/editar/{persona[0]}">Editar</a>
         <a class="eliminar" href="/eliminar/{persona[0]}"
         onclick="return confirm('¿Seguro que quieres eliminar?')">
         Eliminar
         </a>
-    """
-else:
-    acciones = "<span style='color:#94a3b8;'>Solo admin</span>"
+        """
+    else:
+        acciones = "<span style='color:#94a3b8;'>Solo admin</span>"
 
-html += f"""
-<tr>
-    <td><a class="nombre-link" href="/persona/{persona[0]}">{persona[1]}</a></td>
-    <td>{persona[5]}</td>
-    <td>{persona[4]}/{persona[3]}/{persona[2]}</td>
-    <td>{acciones}</td>
-</tr>
-"""
+    html += f"""
+    <tr>
+        <td><a class="nombre-link" href="/persona/{persona[0]}">{persona[1]}</a></td>
+        <td>{persona[5]}</td>
+        <td>{persona[4]}/{persona[3]}/{persona[2]}</td>
+        <td>{acciones}</td>
+    </tr>
+    """
 
     html += """
     </table>
