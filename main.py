@@ -1,4 +1,3 @@
-from psycopg_pool import ConnectionPool
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi import FastAPI, Form, Request, Cookie
 from io import BytesIO
@@ -19,15 +18,10 @@ ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
 serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
 
-pool = ConnectionPool(
-    conninfo=DATABASE_URL,
-    min_size=1,
-    max_size=10,
-    timeout=10
-)
+import psycopg
 
 def conectar():
-    return pool.connection()
+    return psycopg.connect(DATABASE_URL)
 
 def crear_token_admin():
     return serializer.dumps({"admin": True})
