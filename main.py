@@ -1426,3 +1426,21 @@ def eliminar(persona_id: int):
         conn.commit()
 
     return RedirectResponse(url="/ver", status_code=303)
+@app.get("/exportar/excel")
+def exportar_excel():
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, nombre, anio, mes, dia, edad
+                FROM personas
+                ORDER BY id
+            """)
+            personas = cursor.fetchall()
+
+    archivo = crear_excel_personas(personas)
+
+    return StreamingResponse(
+        archivo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=personas.xlsx"}
+    )
