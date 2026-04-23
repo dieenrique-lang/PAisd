@@ -320,6 +320,104 @@ def crear_excel_personas(personas, solo_proximos_cumples=False):
     archivo.seek(0)
     return archivo
 
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_form():
+    return """
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Login administrador</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                background: linear-gradient(135deg, #0f172a, #1d4ed8, #38bdf8);
+            }
+            .card {
+                width: 360px;
+                background: white;
+                padding: 28px;
+                border-radius: 18px;
+                box-shadow: 0 16px 40px rgba(0,0,0,0.20);
+                text-align: center;
+            }
+            h2 {
+                margin-top: 0;
+                color: #1d4ed8;
+            }
+            input {
+                width: 100%;
+                padding: 12px;
+                margin: 8px 0;
+                border: 1px solid #d1d5db;
+                border-radius: 10px;
+                box-sizing: border-box;
+            }
+            button {
+                width: 100%;
+                padding: 12px;
+                border: none;
+                border-radius: 10px;
+                background: #2563eb;
+                color: white;
+                font-weight: bold;
+                cursor: pointer;
+                margin-top: 10px;
+            }
+            a {
+                display: block;
+                margin-top: 14px;
+                color: #2563eb;
+                text-decoration: none;
+                font-weight: bold;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h2>Acceso administrador</h2>
+            <form action="/admin/login" method="post">
+                <input type="text" name="username" placeholder="Usuario" required>
+                <input type="password" name="password" placeholder="Contraseña" required>
+                <button type="submit">Entrar</button>
+            </form>
+            <a href="/">Volver</a>
+        </div>
+    </body>
+    </html>
+    """
+
+
+@app.post("/admin/login")
+def admin_login(username: str = Form(...), password: str = Form(...)):
+    if username != ADMIN_USERNAME or not verificar_password_admin(password):
+        return HTMLResponse(
+            "<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>",
+            status_code=401
+        )
+
+    token = crear_token_admin()
+    response = RedirectResponse(url="/ver", status_code=303)
+    response.set_cookie(
+        key="admin_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False
+    )
+    return response
+
+
+@app.get("/admin/logout")
+def admin_logout():
+    response = RedirectResponse(url="/", status_code=303)
+    response.delete_cookie("admin_session")
+    return response
+
 @app.get("/", response_class=HTMLResponse)
 def inicio():
     return """
