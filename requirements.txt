@@ -3,3 +3,4 @@ uvicorn
 python-multipart
 psycopg[binary]
 openpyxl
+psycopg_pool
