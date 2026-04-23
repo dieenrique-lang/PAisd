@@ -1,3 +1,4 @@
+from psycopg_pool import ConnectionPool
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from io import BytesIO
 from openpyxl import Workbook
@@ -10,10 +11,14 @@ import psycopg
 app = FastAPI()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-
+pool = ConnectionPool(
+    conninfo=DATABASE_URL,
+    min_size=1,
+    max_size=10
+)
 
 def conectar():
-    return psycopg.connect(DATABASE_URL)
+    return pool.connection()
 
 
 def crear_tabla():
