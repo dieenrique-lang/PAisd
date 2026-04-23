@@ -14,7 +14,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 pool = ConnectionPool(
     conninfo=DATABASE_URL,
     min_size=1,
-    max_size=10
+    max_size=10,
+    timeout=10
 )
 
 def conectar():
