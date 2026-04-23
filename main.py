@@ -202,6 +202,85 @@ def dias_para_proximo_cumple(mes, dia):
 
 crear_tabla()
 
+def crear_excel_personas(personas, solo_proximos_cumples=False):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Personas"
+
+    encabezados = [
+        "ID",
+        "Nombre",
+        "Año",
+        "Mes",
+        "Día",
+        "Edad",
+        "Signo",
+        "Estación",
+        "Generación",
+        "Días para próximo cumpleaños"
+    ]
+
+    ws.append(encabezados)
+
+    # Estilo encabezado
+    fill = PatternFill(fill_type="solid", fgColor="2563EB")
+    font = Font(color="FFFFFF", bold=True)
+    align = Alignment(horizontal="center", vertical="center")
+
+    for cell in ws[1]:
+        cell.fill = fill
+        cell.font = font
+        cell.alignment = align
+
+    for persona in personas:
+        persona_id, nombre, anio, mes, dia, edad = persona
+
+        dias_faltan = dias_para_proximo_cumple(mes, dia)
+
+        if solo_proximos_cumples and dias_faltan > 7:
+            continue
+
+        signo = signo_zodiacal(dia, mes)
+        estacion = estacion_sur(dia, mes)
+        generacion = generacion_por_anio(anio)
+
+        ws.append([
+            persona_id,
+            nombre,
+            anio,
+            mes,
+            dia,
+            edad,
+            signo,
+            estacion,
+            generacion,
+            dias_faltan
+        ])
+
+    # Ajuste simple de ancho de columnas
+    anchos = {
+        "A": 8,
+        "B": 24,
+        "C": 10,
+        "D": 8,
+        "E": 8,
+        "F": 8,
+        "G": 16,
+        "H": 14,
+        "I": 22,
+        "J": 24
+    }
+
+    for col, ancho in anchos.items():
+        ws.column_dimensions[col].width = ancho
+
+    # Congelar encabezado
+    ws.freeze_panes = "A2"
+
+    archivo = BytesIO()
+    wb.save(archivo)
+    archivo.seek(0)
+    return archivo
 
 @app.get("/", response_class=HTMLResponse)
 def inicio():
