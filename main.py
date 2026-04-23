@@ -29,6 +29,31 @@ pool = ConnectionPool(
 def conectar():
     return pool.connection()
 
+def crear_token_admin():
+    return serializer.dumps({"admin": True})
+
+
+def leer_token_admin(session_token: str | None):
+    if not session_token:
+        return False
+    try:
+        data = serializer.loads(session_token)
+        return data.get("admin") is True
+    except BadSignature:
+        return False
+
+
+def require_admin(session_token: str | None):
+    return leer_token_admin(session_token)
+
+
+def verificar_password_admin(password_plano: str) -> bool:
+    if not ADMIN_PASSWORD_HASH:
+        return False
+    return bcrypt.checkpw(
+        password_plano.encode("utf-8"),
+        ADMIN_PASSWORD_HASH.encode("utf-8")
+    )
 
 def crear_tabla():
     with conectar() as conn:
