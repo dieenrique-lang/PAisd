@@ -5,7 +5,7 @@ import os
 
 import bcrypt
 import psycopg
-from fastapi import Cookie, FastAPI, Form
+from fastapi import Cookie, FastAPI, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from itsdangerous import BadSignature, URLSafeSerializer
 from openpyxl import Workbook
@@ -69,6 +69,7 @@ def crear_tablas():
                     id SERIAL PRIMARY KEY,
                     nombre TEXT NOT NULL,
                     rut TEXT,
+                    patente TEXT,
                     departamento_id INTEGER REFERENCES departamentos(id),
                     autorizado_por TEXT,
                     observacion TEXT,
@@ -77,6 +78,7 @@ def crear_tablas():
                 )
                 """
             )
+            cursor.execute("ALTER TABLE visitas ADD COLUMN IF NOT EXISTS patente TEXT")
         conn.commit()
 
 
@@ -211,7 +213,12 @@ def layout(titulo: str, contenido: str):
     """
 
 
-crear_tablas()
+@app.on_event("startup")
+def startup_event():
+    try:
+        crear_tablas()
+    except Exception as exc:
+        print(f"[startup] No se pudieron crear/verificar tablas: {exc}")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -478,37 +485,64 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
 
 
 @app.get("/visitas", response_class=HTMLResponse)
-def visitas():
+def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
     with conectar() as conn:
         with conn.cursor() as cursor:
+            where_parts = []
+            params = []
+            if q:
+                like = f"%{q}%"
+                where_parts.append(
+                    """
+                    (
+                        v.nombre ILIKE %s OR
+                        v.rut ILIKE %s OR
+                        v.patente ILIKE %s OR
+                        COALESCE(d.torre, '') ILIKE %s OR
+                        d.numero ILIKE %s OR
+                        (COALESCE(d.torre, '') || '-' || d.numero) ILIKE %s
+                    )
+                    """
+                )
+                params.extend([like, like, like, like, like, like])
+            if solo_dentro:
+                where_parts.append("v.hora_salida IS NULL")
+
+            where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
             cursor.execute(
                 """
-                SELECT v.id, v.nombre, v.rut, d.torre, d.numero, v.autorizado_por,
+                SELECT v.id, v.nombre, v.rut, v.patente, d.torre, d.numero, v.autorizado_por,
                        v.observacion, v.hora_ingreso, v.hora_salida
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
+                """
+                + where_sql
+                + """
                 ORDER BY v.id DESC
                 LIMIT 100
-                """
+                """,
+                params,
             )
             data = cursor.fetchall()
 
     filas = ""
     for v in data:
-        estado = "Dentro" if v[8] is None else "Salió"
-        salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[8] is None else h(v[8])
+        estado = "Dentro" if v[9] is None else "Salió"
+        salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[9] is None else h(v[9])
         filas += f"""
         <tr>
             <td>{h(v[1])}</td>
             <td>{h(v[2])}</td>
-            <td>{format_depto(v[3], v[4])}</td>
-            <td>{h(v[5])}</td>
-            <td>{h(v[7])}</td>
+            <td>{h(v[3])}</td>
+            <td>{format_depto(v[4], v[5])}</td>
+            <td>{h(v[6])}</td>
+            <td>{h(v[8])}</td>
             <td>{estado}</td>
             <td>{salida}</td>
         </tr>
         """
 
+    checked = "checked" if solo_dentro else ""
     contenido = f"""
     <div class="hero"><h1>Control de visitas</h1><p>Registro de ingreso y salida para conserjería.</p></div>
     <div class="card">
@@ -516,6 +550,7 @@ def visitas():
         <form action="/guardar-visita" method="post">
             <input name="nombre" placeholder="Nombre visita" required>
             <input name="rut" placeholder="RUT / Documento">
+            <input name="patente" placeholder="Patente vehículo (opcional)">
             <input name="torre" placeholder="Torre / Block">
             <input name="numero" placeholder="Departamento que visita" required>
             <input name="autorizado_por" placeholder="Autorizado por">
@@ -524,9 +559,21 @@ def visitas():
         </form>
     </div>
     <div class="card">
+        <h2>Buscar y filtrar</h2>
+        <form action="/visitas" method="get">
+            <input name="q" value="{h(q)}" placeholder="Buscar por nombre, RUT, patente o depto">
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 4px;">
+                <input type="checkbox" name="solo_dentro" value="1" {checked} style="width:auto;">
+                Solo visitas dentro del condominio
+            </label>
+            <button type="submit">Aplicar filtros</button>
+            <a class="btn dark" href="/visitas">Limpiar</a>
+        </form>
+    </div>
+    <div class="card">
         <h2>Últimas visitas</h2>
         <table>
-            <tr><th>Visita</th><th>RUT</th><th>Depto</th><th>Autoriza</th><th>Ingreso</th><th>Estado</th><th>Salida</th></tr>
+            <tr><th>Visita</th><th>RUT</th><th>Patente</th><th>Depto</th><th>Autoriza</th><th>Ingreso</th><th>Estado</th><th>Salida</th></tr>
             {filas}
         </table>
     </div>
@@ -542,6 +589,7 @@ def visitas():
 def guardar_visita(
     nombre: str = Form(...),
     rut: str = Form(""),
+    patente: str = Form(""),
     torre: str = Form(""),
     numero: str = Form(...),
     autorizado_por: str = Form(""),
@@ -552,10 +600,10 @@ def guardar_visita(
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
             cursor.execute(
                 """
-                INSERT INTO visitas (nombre, rut, departamento_id, autorizado_por, observacion)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (nombre, rut, dep_id, autorizado_por, observacion),
+                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion),
             )
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
@@ -632,7 +680,7 @@ def exportar_visitas():
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT v.id, v.nombre, v.rut, d.torre, d.numero, v.autorizado_por,
+                SELECT v.id, v.nombre, v.rut, v.patente, d.torre, d.numero, v.autorizado_por,
                        v.observacion, v.hora_ingreso, v.hora_salida
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
@@ -649,6 +697,7 @@ def exportar_visitas():
         "ID",
         "Nombre visita",
         "RUT",
+        "Patente",
         "Torre",
         "Departamento",
         "Autorizado por",
