@@ -755,23 +755,6 @@ def ver(admin_session: str | None = Cookie(default=None)):
         <th>Acción</th>
     </tr>
     """
-
-<div class="links">
-    <a class="link" href="/ver">
-        <i data-lucide="list"></i>
-        Ver personas
-    </a>
-
-    <a class="link" href="/dashboard">
-        <i data-lucide="bar-chart-3"></i>
-        Abrir dashboard
-    </a>
-
-    <a class="link" href="/admin/login">
-        <i data-lucide="shield"></i>
-        Acceso administrador
-    </a>
-</div>
     
     for persona in personas:
        acciones = ""
