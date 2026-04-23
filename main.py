@@ -692,18 +692,31 @@ def dashboard():
     estaciones = {}
     generaciones = {}
     meses = {i: 0 for i in range(1, 13)}
+    proximos_cumples = []
 
     for persona in personas:
-        _, nombre, anio, mes, dia, edad = persona
+        persona_id, nombre, anio, mes, dia, edad = persona
 
         signo = signo_zodiacal(dia, mes)
         estacion = estacion_sur(dia, mes)
         generacion = generacion_por_anio(anio)
+        dias_faltan = dias_para_proximo_cumple(mes, dia)
 
         signos[signo] = signos.get(signo, 0) + 1
         estaciones[estacion] = estaciones.get(estacion, 0) + 1
         generaciones[generacion] = generaciones.get(generacion, 0) + 1
         meses[int(mes)] = meses.get(int(mes), 0) + 1
+
+        if dias_faltan <= 7:
+            proximos_cumples.append({
+                "id": persona_id,
+                "nombre": nombre,
+                "dia": dia,
+                "mes": mes,
+                "dias_faltan": dias_faltan
+            })
+
+    proximos_cumples.sort(key=lambda x: x["dias_faltan"])
 
     signos_orden = [
         "Aries", "Tauro", "Géminis", "Cáncer", "Leo", "Virgo",
@@ -804,6 +817,54 @@ def dashboard():
                 font-weight: 700;
                 color: #2563eb;
             }}
+            .alert-panel {{
+                background: linear-gradient(135deg, #fff7ed, #fffbeb);
+                border: 1px solid #fed7aa;
+                border-radius: 18px;
+                padding: 20px;
+                box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+                margin-bottom: 20px;
+            }}
+            .alert-panel h3 {{
+                margin: 0 0 14px 0;
+                color: #c2410c;
+                font-size: 20px;
+            }}
+            .cumple-lista {{
+                display: grid;
+                gap: 12px;
+            }}
+            .cumple-item {{
+                background: white;
+                border-radius: 14px;
+                padding: 14px 16px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-left: 6px solid #f59e0b;
+            }}
+            .cumple-item.hoy {{
+                border-left-color: #dc2626;
+                background: #fff1f2;
+            }}
+            .cumple-item .nombre {{
+                font-weight: bold;
+                color: #111827;
+            }}
+            .cumple-item .fecha {{
+                color: #64748b;
+                font-size: 14px;
+                margin-top: 4px;
+            }}
+            .cumple-item .estado {{
+                font-weight: bold;
+                color: #b45309;
+                font-size: 14px;
+                text-align: right;
+            }}
+            .cumple-item.hoy .estado {{
+                color: #dc2626;
+            }}
             .layout {{
                 display: grid;
                 grid-template-columns: 2fr 1fr;
@@ -883,12 +944,26 @@ def dashboard():
             .mini-table th {{
                 color: #64748b;
             }}
+            .sin-alertas {{
+                color: #78716c;
+                background: white;
+                border-radius: 14px;
+                padding: 14px 16px;
+            }}
             @media (max-width: 980px) {{
                 .layout {{
                     grid-template-columns: 1fr;
                 }}
                 .grid-two {{
                     grid-template-columns: 1fr;
+                }}
+                .cumple-item {{
+                    flex-direction: column;
+                    align-items: flex-start;
+                    gap: 10px;
+                }}
+                .cumple-item .estado {{
+                    text-align: left;
                 }}
             }}
         </style>
@@ -897,7 +972,7 @@ def dashboard():
         <div class="wrap">
             <div class="hero">
                 <h1>Dashboard de Personas</h1>
-                <p>Resumen general de edades, generaciones, signos, estaciones y meses de nacimiento.</p>
+                <p>Resumen general de edades, generaciones, signos, estaciones y cumpleaños próximos.</p>
             </div>
 
             <div class="stats">
@@ -916,6 +991,44 @@ def dashboard():
                 <div class="stat">
                     <div class="label">Edad máxima</div>
                     <div class="value">{edad_max}</div>
+                </div>
+            </div>
+
+            <div class="alert-panel">
+                <h3>🎉 Próximos cumpleaños (7 días)</h3>
+                <div class="cumple-lista">
+    """
+
+    if proximos_cumples:
+        for p in proximos_cumples:
+            clase = "cumple-item hoy" if p["dias_faltan"] == 0 else "cumple-item"
+
+            if p["dias_faltan"] == 0:
+                estado = "HOY 🎂"
+            elif p["dias_faltan"] == 1:
+                estado = "Mañana"
+            else:
+                estado = f"En {p['dias_faltan']} días"
+
+            html += f"""
+                    <div class="{clase}">
+                        <div>
+                            <div class="nombre">
+                                <a href="/persona/{p['id']}" style="color: inherit; text-decoration: none;">
+                                    {p['nombre']}
+                                </a>
+                            </div>
+                            <div class="fecha">{p['dia']}/{p['mes']}</div>
+                        </div>
+                        <div class="estado">{estado}</div>
+                    </div>
+            """
+    else:
+        html += """
+                    <div class="sin-alertas">No hay cumpleaños en los próximos 7 días.</div>
+        """
+
+    html += f"""
                 </div>
             </div>
 
@@ -993,7 +1106,7 @@ def dashboard():
                             <li><strong>Signo dominante:</strong> {signo_top}</li>
                             <li><strong>Estación dominante:</strong> {estacion_top}</li>
                             <li><strong>Generación dominante:</strong> {generacion_top}</li>
-                            <li><strong>Meses analizados:</strong> 12</li>
+                            <li><strong>Cumpleaños próximos:</strong> {len(proximos_cumples)}</li>
                             <li><strong>Base total:</strong> {total} registros</li>
                         </ul>
                     </div>
