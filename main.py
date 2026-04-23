@@ -670,6 +670,7 @@ def guardar(
 @app.get("/ver", response_class=HTMLResponse)
 def ver(admin_session: str | None = Cookie(default=None)):
     es_admin = require_admin(admin_session)
+
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -755,17 +756,17 @@ def ver(admin_session: str | None = Cookie(default=None)):
         <th>Acción</th>
     </tr>
     """
-    
-       for persona in personas:
+
+    for persona in personas:
         acciones = ""
 
         if es_admin:
             acciones = f"""
-            <a class="editar" href="/editar/{persona[0]}">Editar</a>
-            <a class="eliminar" href="/eliminar/{persona[0]}"
-            onclick="return confirm('¿Seguro que quieres eliminar?')">
-            Eliminar
-            </a>
+                <a class="editar" href="/editar/{persona[0]}">Editar</a>
+                <a class="eliminar" href="/eliminar/{persona[0]}"
+                onclick="return confirm('¿Seguro que quieres eliminar?')">
+                Eliminar
+                </a>
             """
         else:
             acciones = "<span style='color:#94a3b8;'>Solo admin</span>"
@@ -797,7 +798,6 @@ def ver(admin_session: str | None = Cookie(default=None)):
     """
 
     return html
-
 
 @app.get("/persona/{persona_id}", response_class=HTMLResponse)
 def detalle_persona(persona_id: int):
