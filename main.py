@@ -1,3 +1,4 @@
+from zoneinfo import ZoneInfo
 from datetime import datetime
 from html import escape
 from io import BytesIO
@@ -22,6 +23,9 @@ serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
 
 
 # ---------- Infraestructura ----------
+def ahora_chile():
+    return datetime.now(ZoneInfo("America/Santiago")).replace(tzinfo=None)
+    
 def conectar():
     return psycopg.connect(DATABASE_URL)
 
