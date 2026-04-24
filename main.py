@@ -159,6 +159,26 @@ def puede_comite(usuario):
     return bool(usuario and usuario.get("rol") in {"admin", "comite"})
 
 
+def puede_ver_dashboard(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia", "comite"})
+
+
+def puede_ver_residentes(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia", "comite"})
+
+
+def puede_ver_vehiculos(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia", "comite"})
+
+
+def puede_escribir_residentes(usuario):
+    return bool(usuario and usuario.get("rol") == "admin")
+
+
+def puede_escribir_vehiculos(usuario):
+    return bool(usuario and usuario.get("rol") == "admin")
+
+
 def puede_exportar(usuario):
     return bool(usuario and usuario.get("rol") in {"admin", "comite"})
 
@@ -664,9 +684,9 @@ def obtener_o_crear_departamento(cursor, torre, numero):
 @app.get("/residentes", response_class=HTMLResponse)
 def residentes(q: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    if not usuario or usuario.get("rol") not in {"admin", "comite"}:
+    if not puede_ver_residentes(usuario):
         return no_permisos_response(usuario)
-    es_admin = puede_admin(usuario)
+    es_admin = puede_escribir_residentes(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             where_parts = []
@@ -780,7 +800,7 @@ def guardar_residente(
     numero: str = Form(...),
 ):
     usuario = require_login(admin_session)
-    if not puede_admin(usuario):
+    if not puede_escribir_residentes(usuario):
         return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -799,7 +819,7 @@ def guardar_residente(
 @app.get("/eliminar-residente/{residente_id}")
 def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    if not puede_admin(usuario):
+    if not puede_escribir_residentes(usuario):
         return no_permisos_response(usuario)
 
     with conectar() as conn:
@@ -812,9 +832,9 @@ def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(def
 @app.get("/vehiculos", response_class=HTMLResponse)
 def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    if not usuario or usuario.get("rol") not in {"admin", "comite"}:
+    if not puede_ver_vehiculos(usuario):
         return no_permisos_response(usuario)
-    es_admin = puede_admin(usuario)
+    es_admin = puede_escribir_vehiculos(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             where_parts = []
@@ -914,7 +934,7 @@ def guardar_vehiculo(
     numero: str = Form(...),
 ):
     usuario = require_login(admin_session)
-    if not puede_admin(usuario):
+    if not puede_escribir_vehiculos(usuario):
         return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -933,7 +953,7 @@ def guardar_vehiculo(
 @app.get("/eliminar-vehiculo/{vehiculo_id}")
 def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    if not puede_admin(usuario):
+    if not puede_escribir_vehiculos(usuario):
         return no_permisos_response(usuario)
 
     with conectar() as conn:
@@ -1283,7 +1303,7 @@ def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default="")
 @app.get("/dashboard-condominio", response_class=HTMLResponse)
 def dashboard_condominio(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    if not puede_comite(usuario):
+    if not puede_ver_dashboard(usuario):
         return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
