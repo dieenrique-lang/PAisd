@@ -133,7 +133,7 @@ def format_depto(torre, numero):
 
 def render_delete_action(es_admin: bool, href: str, confirm_text: str):
     if not es_admin:
-        return "<span class='muted'>Solo admin</span>"
+        return "<span class='badge warning'>Solo admin</span>"
     return (
         f"<a class='btn red' href='{h(href)}' "
         f"onclick=\"return confirm('{h(confirm_text)}')\">Eliminar</a>"
@@ -142,6 +142,10 @@ def render_delete_action(es_admin: bool, href: str, confirm_text: str):
 
 def ahora_chile() -> datetime:
     return datetime.now(ZoneInfo("America/Santiago")).replace(tzinfo=None)
+
+
+def badge_estado(texto: str, estilo: str = "neutral"):
+    return f"<span class='badge {h(estilo)}'>{h(texto)}</span>"
 
 
 def layout(titulo: str, contenido: str):
@@ -153,7 +157,7 @@ def layout(titulo: str, contenido: str):
         <title>{h(titulo)}</title>
         <style>
             :root {{
-                --bg:#eef2ff;
+                --bg:#f1f5f9;
                 --surface:#ffffff;
                 --text:#0f172a;
                 --muted:#64748b;
@@ -167,12 +171,47 @@ def layout(titulo: str, contenido: str):
             * {{ box-sizing: border-box; }}
             body {{
                 font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-                background: radial-gradient(circle at top left,#dbeafe,var(--bg));
+                background: var(--bg);
                 margin: 0;
-                padding: 32px 18px;
                 color: var(--text);
             }}
-            .wrap {{ max-width: 1150px; margin: 0 auto; }}
+            .app-layout {{
+                display: grid;
+                grid-template-columns: 260px 1fr;
+                min-height: 100vh;
+            }}
+            .sidebar {{
+                background: #0f172a;
+                color: #e2e8f0;
+                padding: 24px 16px;
+                position: sticky;
+                top: 0;
+                height: 100vh;
+            }}
+            .brand {{ font-size: 1.25rem; font-weight: 800; margin-bottom: 18px; color: #fff; }}
+            .sidebar a {{
+                display: block;
+                padding: 10px 12px;
+                border-radius: 10px;
+                color: #cbd5e1;
+                text-decoration: none;
+                margin-bottom: 8px;
+                font-weight: 600;
+            }}
+            .sidebar a:hover {{ background: #1e293b; color: #fff; }}
+            .content-area {{ padding: 20px; }}
+            .topbar {{
+                background: #fff;
+                border: 1px solid var(--border);
+                border-radius: 14px;
+                padding: 14px 18px;
+                margin-bottom: 18px;
+                display:flex;
+                align-items:center;
+                justify-content:space-between;
+                box-shadow: var(--shadow);
+            }}
+            .wrap {{ max-width: 1200px; margin: 0 auto; }}
             .hero {{
                 background: linear-gradient(125deg,var(--primary),var(--primary-dark));
                 color: white;
@@ -220,15 +259,63 @@ def layout(titulo: str, contenido: str):
             .btn.red {{ background: var(--danger); }}
             .btn.green {{ background: var(--success); }}
             .muted {{ color: var(--muted); font-weight: 600; }}
-            table {{ width:100%; border-collapse: separate; border-spacing: 0; overflow:hidden; border: 1px solid var(--border); border-radius: 14px; }}
-            th {{ background: #eff6ff; color: #1e3a8a; text-align:left; padding: 11px; font-size:.92rem; }}
-            td {{ background:#fff; padding: 10px 11px; border-top: 1px solid var(--border); }}
+            .table-wrap {{ overflow-x:auto; border: 1px solid var(--border); border-radius: 14px; }}
+            table {{ width:100%; border-collapse: separate; border-spacing: 0; min-width: 760px; }}
+            th {{ background: #e2e8f0; color: #1e293b; text-align:left; padding: 12px; font-size:.84rem; text-transform: uppercase; letter-spacing: .03em; }}
+            td {{ background:#fff; padding: 10px 11px; border-top: 1px solid var(--border); vertical-align: top; }}
+            tr:hover td {{ background: #f8fafc; }}
+            .badge {{
+                display:inline-flex;
+                align-items:center;
+                padding:4px 10px;
+                border-radius: 999px;
+                font-size: .76rem;
+                font-weight: 700;
+            }}
+            .badge.success {{ background:#dcfce7; color:#166534; }}
+            .badge.warning {{ background:#fef3c7; color:#92400e; }}
+            .badge.info {{ background:#dbeafe; color:#1e40af; }}
+            .badge.dark {{ background:#e2e8f0; color:#0f172a; }}
             .grid {{ display:grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 14px; }}
             .stat {{ font-size: 2rem; font-weight: 800; color: var(--primary); }}
+            .metric-emoji {{ font-size: 1.3rem; }}
+            label {{ font-weight: 600; color:#334155; display:flex; flex-direction:column; gap:6px; }}
+            @media (max-width: 980px) {{
+                .app-layout {{ grid-template-columns: 1fr; }}
+                .sidebar {{ position: static; height: auto; }}
+                .content-area {{ padding: 14px; }}
+            }}
         </style>
     </head>
     <body>
-        <div class="wrap">{contenido}</div>
+        <div class="app-layout">
+            <aside class="sidebar">
+                <div class="brand">🏢 CondoControl</div>
+                <a href="/dashboard-condominio">📊 Dashboard</a>
+                <a href="/residentes">👥 Residentes</a>
+                <a href="/vehiculos">🚗 Vehículos</a>
+                <a href="/visitas">🛂 Visitas</a>
+                <a href="/encomiendas">📦 Encomiendas</a>
+                <a href="/admin/login">🔐 Admin</a>
+            </aside>
+            <main class="content-area">
+                <div class="wrap">
+                    <div class="topbar">
+                        <strong>{h(titulo)} · CondoControl</strong>
+                        <span id="admin-status" class="badge dark">Sesión operador</span>
+                    </div>
+                    {contenido}
+                </div>
+            </main>
+        </div>
+        <script>
+            const hasAdmin = document.cookie.includes("admin_session=");
+            const badge = document.getElementById("admin-status");
+            if (badge && hasAdmin) {{
+                badge.textContent = "Admin conectado";
+                badge.className = "badge success";
+            }}
+        </script>
     </body>
     </html>
     """
@@ -270,8 +357,8 @@ def admin_login_form():
     <div class="card" style="max-width:460px;margin:auto;">
         <h2>Acceso administrador</h2>
         <form action="/admin/login" method="post">
-            <input name="username" placeholder="Usuario" required>
-            <input name="password" type="password" placeholder="Contraseña" required>
+            <label>Usuario<input name="username" placeholder="Usuario" required></label>
+            <label>Contraseña<input name="password" type="password" placeholder="Contraseña" required></label>
             <button class="full" type="submit">Entrar</button>
         </form>
         <div class="actions"><a class="btn dark" href="/">Volver</a></div>
@@ -356,25 +443,25 @@ def residentes(admin_session: str | None = Cookie(default=None)):
     <div class="card">
         <h2>Agregar residente</h2>
         <form action="/guardar-residente" method="post">
-            <input name="nombre" placeholder="Nombre residente" required>
-            <input name="telefono" placeholder="Teléfono">
-            <input name="email" placeholder="Email">
-            <select name="tipo">
+            <label>Nombre residente<input name="nombre" placeholder="Nombre residente" required></label>
+            <label>Teléfono<input name="telefono" placeholder="Teléfono"></label>
+            <label>Email<input name="email" placeholder="Email"></label>
+            <label>Tipo residente<select name="tipo">
                 <option value="Propietario">Propietario</option>
                 <option value="Arrendatario">Arrendatario</option>
                 <option value="Residente">Residente</option>
-            </select>
-            <input name="torre" placeholder="Torre / Block">
-            <input name="numero" placeholder="Departamento" required>
+            </select></label>
+            <label>Torre / Block<input name="torre" placeholder="Torre / Block"></label>
+            <label>Departamento<input name="numero" placeholder="Departamento" required></label>
             <button class="full" type="submit">Guardar residente</button>
         </form>
     </div>
     <div class="card">
         <h2>Listado</h2>
-        <table>
+        <div class="table-wrap"><table>
             <tr><th>Nombre</th><th>Depto</th><th>Teléfono</th><th>Email</th><th>Tipo</th><th>Acción</th></tr>
             {filas}
-        </table>
+        </table></div>
     </div>
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
@@ -450,21 +537,21 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
     <div class="card">
         <h2>Agregar vehículo</h2>
         <form action="/guardar-vehiculo" method="post">
-            <input name="patente" placeholder="Patente" required>
-            <input name="marca" placeholder="Marca">
-            <input name="modelo" placeholder="Modelo">
-            <input name="color" placeholder="Color">
-            <input name="torre" placeholder="Torre / Block">
-            <input name="numero" placeholder="Departamento" required>
+            <label>Patente<input name="patente" placeholder="Patente" required></label>
+            <label>Marca<input name="marca" placeholder="Marca"></label>
+            <label>Modelo<input name="modelo" placeholder="Modelo"></label>
+            <label>Color<input name="color" placeholder="Color"></label>
+            <label>Torre / Block<input name="torre" placeholder="Torre / Block"></label>
+            <label>Departamento<input name="numero" placeholder="Departamento" required></label>
             <button class="full" type="submit">Guardar vehículo</button>
         </form>
     </div>
     <div class="card">
         <h2>Listado vehículos</h2>
-        <table>
+        <div class="table-wrap"><table>
             <tr><th>Patente</th><th>Marca</th><th>Modelo</th><th>Color</th><th>Depto</th><th>Acción</th></tr>
             {filas}
-        </table>
+        </table></div>
     </div>
     <div class="actions"><a class="btn" href="/">Inicio</a></div>
     """
@@ -549,7 +636,7 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
 
     filas = ""
     for v in data:
-        estado = "Dentro" if v[9] is None else "Salió"
+        estado = badge_estado("Dentro", "success") if v[9] is None else badge_estado("Salió", "dark")
         salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[9] is None else h(v[9])
         filas += f"""
         <tr>
@@ -570,20 +657,20 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
     <div class="card">
         <h2>Registrar ingreso</h2>
         <form action="/guardar-visita" method="post">
-            <input name="nombre" placeholder="Nombre visita" required>
-            <input name="rut" placeholder="RUT / Documento">
-            <input name="patente" placeholder="Patente vehículo (opcional)">
-            <input name="torre" placeholder="Torre / Block">
-            <input name="numero" placeholder="Departamento que visita" required>
-            <input name="autorizado_por" placeholder="Autorizado por">
-            <textarea class="full" name="observacion" placeholder="Observación"></textarea>
+            <label>Nombre visita<input name="nombre" placeholder="Nombre visita" required></label>
+            <label>RUT / Documento<input name="rut" placeholder="RUT / Documento"></label>
+            <label>Patente (opcional)<input name="patente" placeholder="Patente vehículo (opcional)"></label>
+            <label>Torre / Block<input name="torre" placeholder="Torre / Block"></label>
+            <label>Departamento que visita<input name="numero" placeholder="Departamento que visita" required></label>
+            <label>Autorizado por<input name="autorizado_por" placeholder="Autorizado por"></label>
+            <label class="full">Observación<textarea name="observacion" placeholder="Observación"></textarea></label>
             <button class="full" type="submit">Registrar ingreso</button>
         </form>
     </div>
     <div class="card">
         <h2>Buscar y filtrar</h2>
         <form action="/visitas" method="get">
-            <input name="q" value="{h(q)}" placeholder="Buscar por nombre, RUT, patente o depto">
+            <label>Búsqueda<input name="q" value="{h(q)}" placeholder="Buscar por nombre, RUT, patente o depto"></label>
             <label style="display:flex;align-items:center;gap:8px;padding:8px 4px;">
                 <input type="checkbox" name="solo_dentro" value="1" {checked} style="width:auto;">
                 Solo visitas dentro del condominio
@@ -594,10 +681,10 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
     </div>
     <div class="card">
         <h2>Últimas visitas</h2>
-        <table>
+        <div class="table-wrap"><table>
             <tr><th>Visita</th><th>RUT</th><th>Patente</th><th>Depto</th><th>Autoriza</th><th>Ingreso</th><th>Estado</th><th>Salida</th></tr>
             {filas}
-        </table>
+        </table></div>
     </div>
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
@@ -692,7 +779,7 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     checked = "checked" if solo_pendientes else ""
     filas = ""
     for e in data:
-        estado = "Entregada" if e[8] else "Pendiente"
+        estado = badge_estado("Entregada", "info") if e[8] else badge_estado("Pendiente", "warning")
         entrega = (
             f"{h(e[7])} - {h(e[9])}"
             if e[8]
@@ -721,19 +808,19 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     <div class="card">
         <h2>Registrar encomienda</h2>
         <form action="/guardar-encomienda" method="post">
-            <input name="nombre_receptor" placeholder="Nombre receptor" required>
-            <input name="torre" placeholder="Torre / Block">
-            <input name="numero" placeholder="Departamento" required>
-            <input name="descripcion" placeholder="Descripción">
-            <input name="recibido_por" placeholder="Recibido por (conserje)">
-            <textarea class="full" name="observacion" placeholder="Observación"></textarea>
+            <label>Nombre receptor<input name="nombre_receptor" placeholder="Nombre receptor" required></label>
+            <label>Torre / Block<input name="torre" placeholder="Torre / Block"></label>
+            <label>Departamento<input name="numero" placeholder="Departamento" required></label>
+            <label>Descripción<input name="descripcion" placeholder="Descripción"></label>
+            <label>Recibido por<input name="recibido_por" placeholder="Recibido por (conserje)"></label>
+            <label class="full">Observación<textarea name="observacion" placeholder="Observación"></textarea></label>
             <button class="full" type="submit">Guardar encomienda</button>
         </form>
     </div>
     <div class="card">
         <h2>Buscar y filtrar</h2>
         <form action="/encomiendas" method="get">
-            <input name="q" value="{h(q)}" placeholder="Buscar por receptor, depto o descripción">
+            <label>Búsqueda<input name="q" value="{h(q)}" placeholder="Buscar por receptor, depto o descripción"></label>
             <label style="display:flex;align-items:center;gap:8px;padding:8px 4px;">
                 <input type="checkbox" name="solo_pendientes" value="1" {checked} style="width:auto;">
                 Solo pendientes por entregar
@@ -744,10 +831,10 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     </div>
     <div class="card">
         <h2>Listado de encomiendas</h2>
-        <table>
+        <div class="table-wrap"><table>
             <tr><th>Receptor</th><th>Depto</th><th>Descripción</th><th>Recibido por</th><th>Recepción</th><th>Estado</th><th>Entrega</th><th>Observación</th></tr>
             {filas}
-        </table>
+        </table></div>
     </div>
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
@@ -848,13 +935,18 @@ def dashboard_condominio():
     contenido = f"""
     <div class="hero"><h1>Dashboard Condominio</h1><p>Resumen operativo para administración y comité.</p></div>
     <div class="grid">
-        <div class="card"><h3>Residentes</h3><div class="stat">{total_residentes}</div></div>
-        <div class="card"><h3>Vehículos</h3><div class="stat">{total_vehiculos}</div></div>
-        <div class="card"><h3>Visitas hoy</h3><div class="stat">{visitas_hoy}</div></div>
-        <div class="card"><h3>Visitas dentro</h3><div class="stat">{visitas_dentro}</div></div>
-        <div class="card"><h3>Encomiendas pendientes</h3><div class="stat">{encomiendas_pendientes}</div></div>
-        <div class="card"><h3>Encomiendas recibidas hoy</h3><div class="stat">{encomiendas_recibidas_hoy}</div></div>
-        <div class="card"><h3>Encomiendas entregadas hoy</h3><div class="stat">{encomiendas_entregadas_hoy}</div></div>
+        <div class="card"><h3><span class="metric-emoji">👥</span> Residentes</h3><div class="stat">{total_residentes}</div></div>
+        <div class="card"><h3><span class="metric-emoji">🚗</span> Vehículos</h3><div class="stat">{total_vehiculos}</div></div>
+        <div class="card"><h3><span class="metric-emoji">🛂</span> Visitas hoy</h3><div class="stat">{visitas_hoy}</div></div>
+        <div class="card"><h3><span class="metric-emoji">🏠</span> Visitas dentro</h3><div class="stat">{visitas_dentro}</div></div>
+        <div class="card"><h3><span class="metric-emoji">📦</span> Encomiendas pendientes</h3><div class="stat">{encomiendas_pendientes}</div></div>
+        <div class="card"><h3><span class="metric-emoji">📥</span> Recibidas hoy</h3><div class="stat">{encomiendas_recibidas_hoy}</div></div>
+        <div class="card"><h3><span class="metric-emoji">✅</span> Entregadas hoy</h3><div class="stat">{encomiendas_entregadas_hoy}</div></div>
+    </div>
+    <div class="card">
+        <h2>Resumen operativo</h2>
+        <p class="muted">Visitas activas: {visitas_dentro} · Encomiendas por entregar: {encomiendas_pendientes}.</p>
+        <p class="muted">Actualizado: {h(ahora)} (hora local Chile).</p>
     </div>
     <div class="card"><h2>Top departamentos con más visitas</h2><ul>{top_html}</ul><p class="muted">Actualizado: {h(ahora)}</p></div>
     <div class="actions">
