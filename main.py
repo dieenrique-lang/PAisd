@@ -599,18 +599,21 @@ def guardar_visita(
     autorizado_por: str = Form(""),
     observacion: str = Form(""),
 ):
-    with conectar() as conn:
-        with conn.cursor() as cursor:
-            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
-            cursor.execute(
-                """
-                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """,
-             (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, ahora_chile())
-        conn.commit()
-    return RedirectResponse(url="/visitas", status_code=303)
+with conectar() as conn:
+    with conn.cursor() as cursor:
+        dep_id = obtener_o_crear_departamento(cursor, torre, numero)
 
+        cursor.execute(
+            """
+            INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, ahora_chile())
+        )
+
+        conn.commit()
+
+return RedirectResponse(url="/visitas", status_code=303)
 
 @app.get("/salida-visita/{visita_id}")
 def salida_visita(visita_id: int):
