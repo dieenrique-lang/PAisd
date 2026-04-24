@@ -99,9 +99,15 @@ def require_admin(token: str | None):
 
 
 def verificar_password_admin(password: str):
-    if not ADMIN_PASSWORD_HASH:
+    password_hash = ADMIN_PASSWORD_HASH.strip()
+
+    if not password_hash:
         return False
-    return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
+
+    return bcrypt.checkpw(
+        password.strip().encode("utf-8"),
+        password_hash.encode("utf-8")
+    )
 
 
 # ---------- Helpers UI ----------
@@ -265,7 +271,7 @@ def admin_login_form():
 
 @app.post("/admin/login")
 def admin_login(username: str = Form(...), password: str = Form(...)):
-    if username != ADMIN_USERNAME or not verificar_password_admin(password):
+    if username.strip() != ADMIN_USERNAME.strip() or not verificar_password_admin(password):
         return HTMLResponse("<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>", status_code=401)
 
     response = RedirectResponse(url="/residentes", status_code=303)
