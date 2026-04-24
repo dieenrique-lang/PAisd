@@ -385,13 +385,12 @@ def layout(titulo: str, contenido: str, usuario=None):
                 <a href="/vehiculos">🚗 Vehículos</a>
                 <a href="/visitas">🛂 Visitas</a>
                 <a href="/encomiendas">📦 Encomiendas</a>
-                <a href="/admin/usuarios">👤 Usuarios</a>
                 <a href="/admin/login">🔐 Admin</a>
             </aside>
             <main class="content-area">
                 <div class="wrap">
                     <div class="topbar">
-                        <strong>{h(titulo)} · CondoControl</strong>
+                        <strong>{h(titulo)}</strong>
                         <span id="admin-status" class="{usuario_badge}">{usuario_label}</span>
                     </div>
                     {contenido}
@@ -416,8 +415,8 @@ def inicio(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     contenido = """
     <div class="hero">
-        <h1>CondoControl</h1>
-        <p>Sistema de control de residentes, vehículos y visitas para condominios.</p>
+        <h1>Panel principal</h1>
+        <p>Operación diaria del condominio en un solo lugar.</p>
     </div>
     <div class="card">
         <h2>Menú principal</h2>
@@ -544,7 +543,7 @@ def admin_usuarios(admin_session: str | None = Cookie(default=None)):
         """
 
     contenido = f"""
-    <div class="hero"><h1>Administración de usuarios</h1><p>Gestión de cuentas y roles del sistema.</p></div>
+    <div class="hero"><h1>Usuarios</h1><p>Gestión de cuentas y roles del sistema.</p></div>
     <div class="card">
         <h2>Crear usuario</h2>
         <form action="/admin/usuarios/crear" method="post">
@@ -740,7 +739,7 @@ def residentes(q: str = Query(default=""), admin_session: str | None = Cookie(de
     logout = '<a class="btn dark" href="/admin/logout">Cerrar sesión admin</a>' if es_admin else ""
 
     form_html = """
-    <div class="hero"><h1>Residentes</h1><p>Registro de residentes por departamento.</p></div>
+    <div class="hero"><h1>Residentes</h1><p>Gestión de residentes.</p></div>
     <div class="card">
         <h2>Agregar residente</h2>
         <form action="/guardar-residente" method="post">
@@ -882,7 +881,7 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
     )
 
     form_html = """
-    <div class="hero"><h1>Vehículos</h1><p>Registro de autos por departamento.</p></div>
+    <div class="hero"><h1>Vehículos</h1><p>Registro de vehículos.</p></div>
     <div class="card">
         <h2>Agregar vehículo</h2>
         <form action="/guardar-vehiculo" method="post">
@@ -1031,7 +1030,7 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0), adm
 
     checked = "checked" if solo_dentro else ""
     form_html = """
-    <div class="hero"><h1>Control de visitas</h1><p>Registro de ingreso y salida para conserjería.</p></div>
+    <div class="hero"><h1>Control de visitas</h1><p>Control de accesos.</p></div>
     <div class="card">
         <h2>Registrar ingreso</h2>
         <form action="/guardar-visita" method="post">
@@ -1200,7 +1199,7 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
         """
 
     form_html = """
-    <div class="hero"><h1>Control de encomiendas</h1><p>Registro y entrega de paquetes por departamento.</p></div>
+    <div class="hero"><h1>Encomiendas</h1><p>Gestión de paquetes.</p></div>
     <div class="card">
         <h2>Registrar encomienda</h2>
         <form action="/guardar-encomienda" method="post">
@@ -1346,7 +1345,7 @@ def dashboard_condominio(admin_session: str | None = Cookie(default=None)):
     ahora = ahora_chile().strftime("%Y-%m-%d %H:%M")
 
     contenido = f"""
-    <div class="hero"><h1>Dashboard Condominio</h1><p>Resumen operativo para administración y comité.</p></div>
+    <div class="hero"><h1>Dashboard</h1><p>Resumen general del condominio.</p></div>
     <div class="grid">
         <div class="card"><h3><span class="metric-emoji">👥</span> Residentes</h3><div class="stat">{total_residentes}</div></div>
         <div class="card"><h3><span class="metric-emoji">🚗</span> Vehículos</h3><div class="stat">{total_vehiculos}</div></div>
