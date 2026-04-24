@@ -662,20 +662,44 @@ def obtener_o_crear_departamento(cursor, torre, numero):
 
 
 @app.get("/residentes", response_class=HTMLResponse)
-def residentes(admin_session: str | None = Cookie(default=None)):
+def residentes(q: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not usuario or usuario.get("rol") not in {"admin", "comite"}:
         return no_permisos_response(usuario)
     es_admin = puede_admin(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
+            where_parts = []
+            params = []
+            if q:
+                like = f"%{q}%"
+                where_parts.append(
+                    """
+                    (
+                        r.nombre ILIKE %s OR
+                        r.telefono ILIKE %s OR
+                        r.email ILIKE %s OR
+                        r.tipo ILIKE %s OR
+                        COALESCE(d.torre, '') ILIKE %s OR
+                        d.numero ILIKE %s OR
+                        (COALESCE(d.torre, '') || '-' || d.numero) ILIKE %s
+                    )
+                    """
+                )
+                params.extend([like, like, like, like, like, like, like])
+            where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
             cursor.execute(
                 """
                 SELECT r.id, r.nombre, r.telefono, r.email, r.tipo, d.torre, d.numero
                 FROM residentes r
                 LEFT JOIN departamentos d ON r.departamento_id = d.id
-                ORDER BY r.id DESC
                 """
+                + where_sql
+                + """
+                ORDER BY r.id DESC
+                LIMIT 200
+                """,
+                params,
             )
             data = cursor.fetchall()
 
@@ -719,6 +743,16 @@ def residentes(admin_session: str | None = Cookie(default=None)):
 
     contenido = f"""
     {form_html}
+    <div class="card">
+        <h2>Buscar y filtrar</h2>
+        <form action="/residentes" method="get">
+            <label>Búsqueda
+                <input name="q" value="{h(q)}" placeholder="Buscar por nombre, teléfono, email, tipo o depto">
+            </label>
+            <button type="submit">Aplicar filtros</button>
+            <a class="btn dark" href="/residentes">Limpiar</a>
+        </form>
+    </div>
     <div class="card">
         <h2>Listado</h2>
         <div class="table-wrap"><table>
@@ -776,20 +810,44 @@ def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(def
 
 
 @app.get("/vehiculos", response_class=HTMLResponse)
-def vehiculos(admin_session: str | None = Cookie(default=None)):
+def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not usuario or usuario.get("rol") not in {"admin", "comite"}:
         return no_permisos_response(usuario)
     es_admin = puede_admin(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
+            where_parts = []
+            params = []
+            if q:
+                like = f"%{q}%"
+                where_parts.append(
+                    """
+                    (
+                        v.patente ILIKE %s OR
+                        v.marca ILIKE %s OR
+                        v.modelo ILIKE %s OR
+                        v.color ILIKE %s OR
+                        COALESCE(d.torre, '') ILIKE %s OR
+                        d.numero ILIKE %s OR
+                        (COALESCE(d.torre, '') || '-' || d.numero) ILIKE %s
+                    )
+                    """
+                )
+                params.extend([like, like, like, like, like, like, like])
+            where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
             cursor.execute(
                 """
                 SELECT v.id, v.patente, v.marca, v.modelo, v.color, d.torre, d.numero
                 FROM vehiculos v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
-                ORDER BY v.id DESC
                 """
+                + where_sql
+                + """
+                ORDER BY v.id DESC
+                LIMIT 200
+                """,
+                params,
             )
             data = cursor.fetchall()
 
@@ -823,6 +881,16 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
 
     contenido = f"""
     {form_html}
+    <div class="card">
+        <h2>Buscar y filtrar</h2>
+        <form action="/vehiculos" method="get">
+            <label>Búsqueda
+                <input name="q" value="{h(q)}" placeholder="Buscar por patente, marca, modelo, color o depto">
+            </label>
+            <button type="submit">Aplicar filtros</button>
+            <a class="btn dark" href="/vehiculos">Limpiar</a>
+        </form>
+    </div>
     <div class="card">
         <h2>Listado vehículos</h2>
         <div class="table-wrap"><table>
