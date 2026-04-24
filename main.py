@@ -235,9 +235,12 @@ def badge_estado(texto: str, estilo: str = "neutral"):
 def layout(titulo: str, contenido: str, usuario=None):
     usuario_label = "Sesión invitado"
     usuario_badge = "badge dark"
+    admin_link = ""
     if usuario:
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
         usuario_badge = "badge info"
+        if usuario.get("rol") == "admin":
+            admin_link = '<a href="/admin/usuarios">👤 Usuarios</a>'
     return f"""
     <html>
     <head>
@@ -385,6 +388,7 @@ def layout(titulo: str, contenido: str, usuario=None):
                 <a href="/vehiculos">🚗 Vehículos</a>
                 <a href="/visitas">🛂 Visitas</a>
                 <a href="/encomiendas">📦 Encomiendas</a>
+                {admin_link}
                 <a href="/admin/login">🔐 Admin</a>
             </aside>
             <main class="content-area">
