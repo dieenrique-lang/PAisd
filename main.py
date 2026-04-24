@@ -96,28 +96,92 @@ def crear_tablas():
                 )
                 """
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS usuarios (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    rol TEXT NOT NULL,
+                    activo BOOLEAN DEFAULT TRUE,
+                    creado_en TIMESTAMP DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            total_usuarios = cursor.fetchone()[0]
+            if total_usuarios == 0 and ADMIN_PASSWORD_HASH:
+                cursor.execute(
+                    """
+                    INSERT INTO usuarios (username, password_hash, rol, activo)
+                    VALUES (%s, %s, %s, TRUE)
+                    ON CONFLICT (username) DO NOTHING
+                    """,
+                    (ADMIN_USERNAME, ADMIN_PASSWORD_HASH, "admin"),
+                )
         conn.commit()
 
 
 # ---------- Auth admin ----------
-def crear_token_admin():
-    return serializer.dumps({"admin": True})
+def crear_token_sesion(username: str, rol: str):
+    return serializer.dumps({"username": username, "rol": rol})
 
 
-def require_admin(token: str | None):
+def require_login(token: str | None):
     if not token:
-        return False
+        return None
     try:
         data = serializer.loads(token)
-        return data.get("admin") is True
+        username = data.get("username")
+        rol = data.get("rol")
+        if username and rol:
+            return {"username": username, "rol": rol}
     except BadSignature:
-        return False
+        return None
+    return None
 
 
 def verificar_password_admin(password: str):
     if not ADMIN_PASSWORD_HASH:
         return False
     return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
+
+
+def puede_admin(usuario):
+    return bool(usuario and usuario.get("rol") == "admin")
+
+
+def puede_guardia(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia"})
+
+
+def puede_comite(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "comite"})
+
+
+def puede_exportar(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "comite"})
+
+
+def puede_escribir_visitas(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia"})
+
+
+def puede_escribir_encomiendas(usuario):
+    return bool(usuario and usuario.get("rol") in {"admin", "guardia"})
+
+
+def no_permisos_response(usuario):
+    if not usuario:
+        return RedirectResponse(url="/admin/login", status_code=303)
+    contenido = """
+    <div class="card">
+        <h2>No tienes permisos para esta acción</h2>
+        <p class="muted">Tu rol actual no permite ejecutar esta operación.</p>
+        <div class="actions"><a class="btn" href="/">Volver al inicio</a></div>
+    </div>
+    """
+    return HTMLResponse(layout("Sin permisos", contenido, usuario))
 
 
 # ---------- Helpers UI ----------
@@ -148,7 +212,12 @@ def badge_estado(texto: str, estilo: str = "neutral"):
     return f"<span class='badge {h(estilo)}'>{h(texto)}</span>"
 
 
-def layout(titulo: str, contenido: str):
+def layout(titulo: str, contenido: str, usuario=None):
+    usuario_label = "Sesión invitado"
+    usuario_badge = "badge dark"
+    if usuario:
+        usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
+        usuario_badge = "badge info"
     return f"""
     <html>
     <head>
@@ -302,20 +371,12 @@ def layout(titulo: str, contenido: str):
                 <div class="wrap">
                     <div class="topbar">
                         <strong>{h(titulo)} · CondoControl</strong>
-                        <span id="admin-status" class="badge dark">Sesión operador</span>
+                        <span id="admin-status" class="{usuario_badge}">{usuario_label}</span>
                     </div>
                     {contenido}
                 </div>
             </main>
         </div>
-        <script>
-            const hasAdmin = document.cookie.includes("admin_session=");
-            const badge = document.getElementById("admin-status");
-            if (badge && hasAdmin) {{
-                badge.textContent = "Admin conectado";
-                badge.className = "badge success";
-            }}
-        </script>
     </body>
     </html>
     """
@@ -330,7 +391,8 @@ def startup_event():
 
 
 @app.get("/", response_class=HTMLResponse)
-def inicio():
+def inicio(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
     contenido = """
     <div class="hero">
         <h1>CondoControl</h1>
@@ -348,7 +410,7 @@ def inicio():
         </div>
     </div>
     """
-    return layout("CondoControl", contenido)
+    return layout("CondoControl", contenido, usuario)
 
 
 @app.get("/admin/login", response_class=HTMLResponse)
@@ -369,11 +431,42 @@ def admin_login_form():
 
 @app.post("/admin/login")
 def admin_login(username: str = Form(...), password: str = Form(...)):
-    if username != ADMIN_USERNAME or not verificar_password_admin(password):
+    usuario_db = None
+    total_usuarios = 0
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            total_usuarios = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                SELECT username, password_hash, rol, activo
+                FROM usuarios
+                WHERE username = %s
+                """,
+                (username,),
+            )
+            usuario_db = cursor.fetchone()
+
+    login_ok = False
+    rol = "admin"
+    if usuario_db and usuario_db[3]:
+        login_ok = bcrypt.checkpw(password.encode("utf-8"), usuario_db[1].encode("utf-8"))
+        rol = usuario_db[2]
+    elif total_usuarios == 0 and username == ADMIN_USERNAME and verificar_password_admin(password):
+        login_ok = True
+        rol = "admin"
+
+    if not login_ok:
         return HTMLResponse("<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>", status_code=401)
 
-    response = RedirectResponse(url="/residentes", status_code=303)
-    response.set_cookie(key="admin_session", value=crear_token_admin(), httponly=True, samesite="lax", secure=False)
+    response = RedirectResponse(url="/", status_code=303)
+    response.set_cookie(
+        key="admin_session",
+        value=crear_token_sesion(username=username, rol=rol),
+        httponly=True,
+        samesite="lax",
+        secure=False,
+    )
     return response
 
 
@@ -409,7 +502,10 @@ def obtener_o_crear_departamento(cursor, torre, numero):
 
 @app.get("/residentes", response_class=HTMLResponse)
 def residentes(admin_session: str | None = Cookie(default=None)):
-    es_admin = require_admin(admin_session)
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") not in {"admin", "comite"}:
+        return no_permisos_response(usuario)
+    es_admin = puede_admin(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -438,7 +534,7 @@ def residentes(admin_session: str | None = Cookie(default=None)):
 
     logout = '<a class="btn dark" href="/admin/logout">Cerrar sesión admin</a>' if es_admin else ""
 
-    contenido = f"""
+    form_html = """
     <div class="hero"><h1>Residentes</h1><p>Registro de residentes por departamento.</p></div>
     <div class="card">
         <h2>Agregar residente</h2>
@@ -456,6 +552,12 @@ def residentes(admin_session: str | None = Cookie(default=None)):
             <button class="full" type="submit">Guardar residente</button>
         </form>
     </div>
+    """ if es_admin else """
+    <div class="hero"><h1>Residentes</h1><p>Vista de solo lectura para comité.</p></div>
+    """
+
+    contenido = f"""
+    {form_html}
     <div class="card">
         <h2>Listado</h2>
         <div class="table-wrap"><table>
@@ -469,11 +571,12 @@ def residentes(admin_session: str | None = Cookie(default=None)):
         {logout}
     </div>
     """
-    return layout("Residentes", contenido)
+    return layout("Residentes", contenido, usuario)
 
 
 @app.post("/guardar-residente")
 def guardar_residente(
+    admin_session: str | None = Cookie(default=None),
     nombre: str = Form(...),
     telefono: str = Form(""),
     email: str = Form(""),
@@ -481,6 +584,9 @@ def guardar_residente(
     torre: str = Form(""),
     numero: str = Form(...),
 ):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
@@ -497,8 +603,9 @@ def guardar_residente(
 
 @app.get("/eliminar-residente/{residente_id}")
 def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(default=None)):
-    if not require_admin(admin_session):
-        return RedirectResponse(url="/admin/login", status_code=303)
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
 
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -509,7 +616,10 @@ def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(def
 
 @app.get("/vehiculos", response_class=HTMLResponse)
 def vehiculos(admin_session: str | None = Cookie(default=None)):
-    es_admin = require_admin(admin_session)
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") not in {"admin", "comite"}:
+        return no_permisos_response(usuario)
+    es_admin = puede_admin(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -532,7 +642,7 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
         for v in data
     )
 
-    contenido = f"""
+    form_html = """
     <div class="hero"><h1>Vehículos</h1><p>Registro de autos por departamento.</p></div>
     <div class="card">
         <h2>Agregar vehículo</h2>
@@ -546,6 +656,12 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
             <button class="full" type="submit">Guardar vehículo</button>
         </form>
     </div>
+    """ if es_admin else """
+    <div class="hero"><h1>Vehículos</h1><p>Vista de solo lectura para comité.</p></div>
+    """
+
+    contenido = f"""
+    {form_html}
     <div class="card">
         <h2>Listado vehículos</h2>
         <div class="table-wrap"><table>
@@ -555,11 +671,12 @@ def vehiculos(admin_session: str | None = Cookie(default=None)):
     </div>
     <div class="actions"><a class="btn" href="/">Inicio</a></div>
     """
-    return layout("Vehículos", contenido)
+    return layout("Vehículos", contenido, usuario)
 
 
 @app.post("/guardar-vehiculo")
 def guardar_vehiculo(
+    admin_session: str | None = Cookie(default=None),
     patente: str = Form(...),
     marca: str = Form(""),
     modelo: str = Form(""),
@@ -567,6 +684,9 @@ def guardar_vehiculo(
     torre: str = Form(""),
     numero: str = Form(...),
 ):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
@@ -583,8 +703,9 @@ def guardar_vehiculo(
 
 @app.get("/eliminar-vehiculo/{vehiculo_id}")
 def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(default=None)):
-    if not require_admin(admin_session):
-        return RedirectResponse(url="/admin/login", status_code=303)
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
 
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -594,7 +715,11 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
 
 
 @app.get("/visitas", response_class=HTMLResponse)
-def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
+def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0), admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
+        return no_permisos_response(usuario)
+    puede_escribir = puede_escribir_visitas(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             where_parts = []
@@ -637,7 +762,11 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
     filas = ""
     for v in data:
         estado = badge_estado("Dentro", "success") if v[9] is None else badge_estado("Salió", "dark")
-        salida = f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>" if v[9] is None else h(v[9])
+        salida = (
+            f"<a class='btn green' href='/salida-visita/{v[0]}'>Marcar salida</a>"
+            if v[9] is None and puede_escribir
+            else (h(v[9]) if v[9] is not None else badge_estado("Solo lectura", "warning"))
+        )
         filas += f"""
         <tr>
             <td>{h(v[1])}</td>
@@ -652,7 +781,7 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
         """
 
     checked = "checked" if solo_dentro else ""
-    contenido = f"""
+    form_html = """
     <div class="hero"><h1>Control de visitas</h1><p>Registro de ingreso y salida para conserjería.</p></div>
     <div class="card">
         <h2>Registrar ingreso</h2>
@@ -667,6 +796,13 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
             <button class="full" type="submit">Registrar ingreso</button>
         </form>
     </div>
+    """ if puede_escribir else """
+    <div class="hero"><h1>Control de visitas</h1><p>Vista en modo lectura.</p></div>
+    """
+
+    export_link = '<a class="btn" href="/exportar/visitas">Exportar visitas</a>' if puede_exportar(usuario) else ""
+    contenido = f"""
+    {form_html}
     <div class="card">
         <h2>Buscar y filtrar</h2>
         <form action="/visitas" method="get">
@@ -688,14 +824,15 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0)):
     </div>
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
-        <a class="btn" href="/exportar/visitas">Exportar visitas</a>
+        {export_link}
     </div>
     """
-    return layout("Visitas", contenido)
+    return layout("Visitas", contenido, usuario)
 
 
 @app.post("/guardar-visita")
 def guardar_visita(
+    admin_session: str | None = Cookie(default=None),
     nombre: str = Form(...),
     rut: str = Form(""),
     patente: str = Form(""),
@@ -704,6 +841,9 @@ def guardar_visita(
     autorizado_por: str = Form(""),
     observacion: str = Form(""),
 ):
+    usuario = require_login(admin_session)
+    if not puede_escribir_visitas(usuario):
+        return no_permisos_response(usuario)
     hora_ingreso = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -720,7 +860,10 @@ def guardar_visita(
 
 
 @app.get("/salida-visita/{visita_id}")
-def salida_visita(visita_id: int):
+def salida_visita(visita_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_escribir_visitas(usuario):
+        return no_permisos_response(usuario)
     hora_salida = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -737,7 +880,11 @@ def salida_visita(visita_id: int):
 
 
 @app.get("/encomiendas", response_class=HTMLResponse)
-def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default=0)):
+def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default=0), admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
+        return no_permisos_response(usuario)
+    puede_escribir = puede_escribir_encomiendas(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             where_parts = []
@@ -780,15 +927,15 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     filas = ""
     for e in data:
         estado = badge_estado("Entregada", "info") if e[8] else badge_estado("Pendiente", "warning")
-        entrega = (
-            f"{h(e[7])} - {h(e[9])}"
-            if e[8]
-            else f"""
+        entrega = f"{h(e[7])} - {h(e[9])}" if e[8] else (
+            f"""
             <form action="/entregar-encomienda/{e[0]}" method="get" style="display:flex;gap:6px;align-items:center;">
                 <input name="entregado_a" placeholder="Entregado a" style="min-width:140px;">
                 <button class="btn green" type="submit">Marcar entrega</button>
             </form>
             """
+            if puede_escribir
+            else badge_estado("Solo lectura", "warning")
         )
         filas += f"""
         <tr>
@@ -803,7 +950,7 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
         </tr>
         """
 
-    contenido = f"""
+    form_html = """
     <div class="hero"><h1>Control de encomiendas</h1><p>Registro y entrega de paquetes por departamento.</p></div>
     <div class="card">
         <h2>Registrar encomienda</h2>
@@ -817,6 +964,13 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
             <button class="full" type="submit">Guardar encomienda</button>
         </form>
     </div>
+    """ if puede_escribir else """
+    <div class="hero"><h1>Control de encomiendas</h1><p>Vista en modo lectura.</p></div>
+    """
+
+    export_link = '<a class="btn" href="/exportar/encomiendas">Exportar encomiendas</a>' if puede_exportar(usuario) else ""
+    contenido = f"""
+    {form_html}
     <div class="card">
         <h2>Buscar y filtrar</h2>
         <form action="/encomiendas" method="get">
@@ -839,14 +993,15 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
         <a class="btn" href="/dashboard-condominio">Dashboard</a>
-        <a class="btn" href="/exportar/encomiendas">Exportar encomiendas</a>
+        {export_link}
     </div>
     """
-    return layout("Encomiendas", contenido)
+    return layout("Encomiendas", contenido, usuario)
 
 
 @app.post("/guardar-encomienda")
 def guardar_encomienda(
+    admin_session: str | None = Cookie(default=None),
     nombre_receptor: str = Form(...),
     torre: str = Form(""),
     numero: str = Form(...),
@@ -854,6 +1009,9 @@ def guardar_encomienda(
     recibido_por: str = Form(""),
     observacion: str = Form(""),
 ):
+    usuario = require_login(admin_session)
+    if not puede_escribir_encomiendas(usuario):
+        return no_permisos_response(usuario)
     fecha_recepcion = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -873,7 +1031,10 @@ def guardar_encomienda(
 
 
 @app.get("/entregar-encomienda/{encomienda_id}")
-def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default="")):
+def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_escribir_encomiendas(usuario):
+        return no_permisos_response(usuario)
     fecha_entrega = ahora_chile()
     entregado_a_value = entregado_a.strip() or "Recibido por residente"
     with conectar() as conn:
@@ -891,7 +1052,10 @@ def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default="")
 
 
 @app.get("/dashboard-condominio", response_class=HTMLResponse)
-def dashboard_condominio():
+def dashboard_condominio(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_comite(usuario):
+        return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) FROM residentes")
@@ -956,11 +1120,14 @@ def dashboard_condominio():
         <a class="btn" href="/exportar/visitas">Exportar visitas</a>
     </div>
     """
-    return layout("Dashboard Condominio", contenido)
+    return layout("Dashboard Condominio", contenido, usuario)
 
 
 @app.get("/exportar/visitas")
-def exportar_visitas():
+def exportar_visitas(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_exportar(usuario):
+        return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -1019,7 +1186,10 @@ def exportar_visitas():
 
 
 @app.get("/exportar/encomiendas")
-def exportar_encomiendas():
+def exportar_encomiendas(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_exportar(usuario):
+        return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
