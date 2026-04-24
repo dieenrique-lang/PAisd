@@ -80,6 +80,22 @@ def crear_tablas():
                 """
             )
             cursor.execute("ALTER TABLE visitas ADD COLUMN IF NOT EXISTS patente TEXT")
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS encomiendas (
+                    id SERIAL PRIMARY KEY,
+                    nombre_receptor TEXT NOT NULL,
+                    departamento_id INTEGER REFERENCES departamentos(id),
+                    descripcion TEXT,
+                    recibido_por TEXT,
+                    fecha_recepcion TIMESTAMP NOT NULL,
+                    fecha_entrega TIMESTAMP,
+                    entregado BOOLEAN NOT NULL DEFAULT FALSE,
+                    entregado_a TEXT,
+                    observacion TEXT
+                )
+                """
+            )
         conn.commit()
 
 
@@ -99,15 +115,9 @@ def require_admin(token: str | None):
 
 
 def verificar_password_admin(password: str):
-    password_hash = ADMIN_PASSWORD_HASH.strip()
-
-    if not password_hash:
+    if not ADMIN_PASSWORD_HASH:
         return False
-
-    return bcrypt.checkpw(
-        password.strip().encode("utf-8"),
-        password_hash.encode("utf-8")
-    )
+    return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
 
 
 # ---------- Helpers UI ----------
@@ -245,6 +255,7 @@ def inicio():
             <a class="btn" href="/residentes">Residentes</a>
             <a class="btn" href="/vehiculos">Vehículos</a>
             <a class="btn" href="/visitas">Control de visitas</a>
+            <a class="btn" href="/encomiendas">Encomiendas</a>
             <a class="btn" href="/dashboard-condominio">Dashboard</a>
             <a class="btn dark" href="/admin/login">Acceso administrador</a>
         </div>
@@ -271,7 +282,7 @@ def admin_login_form():
 
 @app.post("/admin/login")
 def admin_login(username: str = Form(...), password: str = Form(...)):
-    if username.strip() != ADMIN_USERNAME.strip() or not verificar_password_admin(password):
+    if username != ADMIN_USERNAME or not verificar_password_admin(password):
         return HTMLResponse("<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>", status_code=401)
 
     response = RedirectResponse(url="/residentes", status_code=303)
@@ -638,6 +649,160 @@ def salida_visita(visita_id: int):
     return RedirectResponse(url="/visitas", status_code=303)
 
 
+@app.get("/encomiendas", response_class=HTMLResponse)
+def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default=0)):
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            where_parts = []
+            params = []
+            if q:
+                like = f"%{q}%"
+                where_parts.append(
+                    """
+                    (
+                        e.nombre_receptor ILIKE %s OR
+                        e.descripcion ILIKE %s OR
+                        COALESCE(d.torre, '') ILIKE %s OR
+                        d.numero ILIKE %s OR
+                        (COALESCE(d.torre, '') || '-' || d.numero) ILIKE %s
+                    )
+                    """
+                )
+                params.extend([like, like, like, like, like])
+            if solo_pendientes:
+                where_parts.append("e.entregado = FALSE")
+
+            where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+            cursor.execute(
+                """
+                SELECT e.id, e.nombre_receptor, d.torre, d.numero, e.descripcion, e.recibido_por,
+                       e.fecha_recepcion, e.fecha_entrega, e.entregado, e.entregado_a, e.observacion
+                FROM encomiendas e
+                LEFT JOIN departamentos d ON e.departamento_id = d.id
+                """
+                + where_sql
+                + """
+                ORDER BY e.id DESC
+                LIMIT 200
+                """,
+                params,
+            )
+            data = cursor.fetchall()
+
+    checked = "checked" if solo_pendientes else ""
+    filas = ""
+    for e in data:
+        estado = "Entregada" if e[8] else "Pendiente"
+        entrega = (
+            f"{h(e[7])} - {h(e[9])}"
+            if e[8]
+            else f"""
+            <form action="/entregar-encomienda/{e[0]}" method="get" style="display:flex;gap:6px;align-items:center;">
+                <input name="entregado_a" placeholder="Entregado a" style="min-width:140px;">
+                <button class="btn green" type="submit">Marcar entrega</button>
+            </form>
+            """
+        )
+        filas += f"""
+        <tr>
+            <td>{h(e[1])}</td>
+            <td>{format_depto(e[2], e[3])}</td>
+            <td>{h(e[4])}</td>
+            <td>{h(e[5])}</td>
+            <td>{h(e[6])}</td>
+            <td>{estado}</td>
+            <td>{entrega}</td>
+            <td>{h(e[10])}</td>
+        </tr>
+        """
+
+    contenido = f"""
+    <div class="hero"><h1>Control de encomiendas</h1><p>Registro y entrega de paquetes por departamento.</p></div>
+    <div class="card">
+        <h2>Registrar encomienda</h2>
+        <form action="/guardar-encomienda" method="post">
+            <input name="nombre_receptor" placeholder="Nombre receptor" required>
+            <input name="torre" placeholder="Torre / Block">
+            <input name="numero" placeholder="Departamento" required>
+            <input name="descripcion" placeholder="Descripción">
+            <input name="recibido_por" placeholder="Recibido por (conserje)">
+            <textarea class="full" name="observacion" placeholder="Observación"></textarea>
+            <button class="full" type="submit">Guardar encomienda</button>
+        </form>
+    </div>
+    <div class="card">
+        <h2>Buscar y filtrar</h2>
+        <form action="/encomiendas" method="get">
+            <input name="q" value="{h(q)}" placeholder="Buscar por receptor, depto o descripción">
+            <label style="display:flex;align-items:center;gap:8px;padding:8px 4px;">
+                <input type="checkbox" name="solo_pendientes" value="1" {checked} style="width:auto;">
+                Solo pendientes por entregar
+            </label>
+            <button type="submit">Aplicar filtros</button>
+            <a class="btn dark" href="/encomiendas">Limpiar</a>
+        </form>
+    </div>
+    <div class="card">
+        <h2>Listado de encomiendas</h2>
+        <table>
+            <tr><th>Receptor</th><th>Depto</th><th>Descripción</th><th>Recibido por</th><th>Recepción</th><th>Estado</th><th>Entrega</th><th>Observación</th></tr>
+            {filas}
+        </table>
+    </div>
+    <div class="actions">
+        <a class="btn" href="/">Inicio</a>
+        <a class="btn" href="/dashboard-condominio">Dashboard</a>
+        <a class="btn" href="/exportar/encomiendas">Exportar encomiendas</a>
+    </div>
+    """
+    return layout("Encomiendas", contenido)
+
+
+@app.post("/guardar-encomienda")
+def guardar_encomienda(
+    nombre_receptor: str = Form(...),
+    torre: str = Form(""),
+    numero: str = Form(...),
+    descripcion: str = Form(""),
+    recibido_por: str = Form(""),
+    observacion: str = Form(""),
+):
+    fecha_recepcion = ahora_chile()
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+            cursor.execute(
+                """
+                INSERT INTO encomiendas (
+                    nombre_receptor, departamento_id, descripcion, recibido_por,
+                    fecha_recepcion, observacion
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                (nombre_receptor, dep_id, descripcion, recibido_por, fecha_recepcion, observacion),
+            )
+        conn.commit()
+    return RedirectResponse(url="/encomiendas", status_code=303)
+
+
+@app.get("/entregar-encomienda/{encomienda_id}")
+def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default="")):
+    fecha_entrega = ahora_chile()
+    entregado_a_value = entregado_a.strip() or "Recibido por residente"
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE encomiendas
+                SET entregado = TRUE, fecha_entrega = %s, entregado_a = %s
+                WHERE id = %s AND entregado = FALSE
+                """,
+                (fecha_entrega, entregado_a_value, encomienda_id),
+            )
+        conn.commit()
+    return RedirectResponse(url="/encomiendas", status_code=303)
+
+
 @app.get("/dashboard-condominio", response_class=HTMLResponse)
 def dashboard_condominio():
     with conectar() as conn:
@@ -653,6 +818,17 @@ def dashboard_condominio():
 
             cursor.execute("SELECT COUNT(*) FROM visitas WHERE hora_salida IS NULL")
             visitas_dentro = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE entregado = FALSE")
+            encomiendas_pendientes = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE DATE(fecha_recepcion) = CURRENT_DATE")
+            encomiendas_recibidas_hoy = cursor.fetchone()[0]
+
+            cursor.execute(
+                "SELECT COUNT(*) FROM encomiendas WHERE entregado = TRUE AND DATE(fecha_entrega) = CURRENT_DATE"
+            )
+            encomiendas_entregadas_hoy = cursor.fetchone()[0]
 
             cursor.execute(
                 """
@@ -676,11 +852,15 @@ def dashboard_condominio():
         <div class="card"><h3>Vehículos</h3><div class="stat">{total_vehiculos}</div></div>
         <div class="card"><h3>Visitas hoy</h3><div class="stat">{visitas_hoy}</div></div>
         <div class="card"><h3>Visitas dentro</h3><div class="stat">{visitas_dentro}</div></div>
+        <div class="card"><h3>Encomiendas pendientes</h3><div class="stat">{encomiendas_pendientes}</div></div>
+        <div class="card"><h3>Encomiendas recibidas hoy</h3><div class="stat">{encomiendas_recibidas_hoy}</div></div>
+        <div class="card"><h3>Encomiendas entregadas hoy</h3><div class="stat">{encomiendas_entregadas_hoy}</div></div>
     </div>
     <div class="card"><h2>Top departamentos con más visitas</h2><ul>{top_html}</ul><p class="muted">Actualizado: {h(ahora)}</p></div>
     <div class="actions">
         <a class="btn" href="/">Inicio</a>
         <a class="btn" href="/visitas">Control visitas</a>
+        <a class="btn" href="/encomiendas">Encomiendas</a>
         <a class="btn" href="/exportar/visitas">Exportar visitas</a>
     </div>
     """
@@ -743,6 +923,65 @@ def exportar_visitas():
         archivo,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=visitas_condominio.xlsx"},
+    )
+
+
+@app.get("/exportar/encomiendas")
+def exportar_encomiendas():
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT e.id, e.nombre_receptor, d.torre, d.numero, e.descripcion, e.recibido_por,
+                       e.fecha_recepcion, e.entregado, e.fecha_entrega, e.entregado_a, e.observacion
+                FROM encomiendas e
+                LEFT JOIN departamentos d ON e.departamento_id = d.id
+                ORDER BY e.id DESC
+                """
+            )
+            data = cursor.fetchall()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Encomiendas"
+
+    headers = [
+        "ID",
+        "Nombre receptor",
+        "Torre",
+        "Departamento",
+        "Descripción",
+        "Recibido por",
+        "Fecha recepción",
+        "Entregado",
+        "Fecha entrega",
+        "Entregado a",
+        "Observación",
+    ]
+    ws.append(headers)
+
+    fill = PatternFill(fill_type="solid", fgColor="2563EB")
+    font = Font(color="FFFFFF", bold=True)
+    align = Alignment(horizontal="center")
+    for cell in ws[1]:
+        cell.fill = fill
+        cell.font = font
+        cell.alignment = align
+
+    for row in data:
+        ws.append(list(row))
+
+    for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]:
+        ws.column_dimensions[col].width = 22
+
+    archivo = BytesIO()
+    wb.save(archivo)
+    archivo.seek(0)
+
+    return StreamingResponse(
+        archivo,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=encomiendas_condominio.xlsx"},
     )
 
 
