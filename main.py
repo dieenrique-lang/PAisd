@@ -365,6 +365,7 @@ def layout(titulo: str, contenido: str, usuario=None):
                 <a href="/vehiculos">🚗 Vehículos</a>
                 <a href="/visitas">🛂 Visitas</a>
                 <a href="/encomiendas">📦 Encomiendas</a>
+                <a href="/admin/usuarios">👤 Usuarios</a>
                 <a href="/admin/login">🔐 Admin</a>
             </aside>
             <main class="content-area">
@@ -475,6 +476,166 @@ def admin_logout():
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("admin_session")
     return response
+
+
+@app.get("/admin/usuarios", response_class=HTMLResponse)
+def admin_usuarios(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, username, rol, activo, creado_en
+                FROM usuarios
+                ORDER BY id ASC
+                """
+            )
+            data = cursor.fetchall()
+
+    filas = ""
+    for u in data:
+        activo_badge = badge_estado("Activo", "success") if u[3] else badge_estado("Inactivo", "warning")
+        accion_activo = "Desactivar" if u[3] else "Activar"
+        filas += f"""
+        <tr>
+            <td>{u[0]}</td>
+            <td>{h(u[1])}</td>
+            <td>
+                <form action="/admin/usuarios/rol/{u[0]}" method="post" style="display:flex;gap:8px;align-items:center;">
+                    <select name="rol" style="min-width:140px;">
+                        <option value="admin" {"selected" if u[2] == "admin" else ""}>admin</option>
+                        <option value="guardia" {"selected" if u[2] == "guardia" else ""}>guardia</option>
+                        <option value="comite" {"selected" if u[2] == "comite" else ""}>comite</option>
+                    </select>
+                    <button type="submit">Cambiar rol</button>
+                </form>
+            </td>
+            <td>{activo_badge}</td>
+            <td>{h(u[4])}</td>
+            <td>
+                <a class="btn dark" href="/admin/usuarios/toggle/{u[0]}">{accion_activo}</a>
+                <a class="btn red" href="/admin/usuarios/eliminar/{u[0]}"
+                   onclick="return confirm('¿Eliminar usuario {h(u[1])}?')">Eliminar</a>
+            </td>
+        </tr>
+        """
+
+    contenido = f"""
+    <div class="hero"><h1>Administración de usuarios</h1><p>Gestión de cuentas y roles del sistema.</p></div>
+    <div class="card">
+        <h2>Crear usuario</h2>
+        <form action="/admin/usuarios/crear" method="post">
+            <label>Username<input name="username" required placeholder="usuario"></label>
+            <label>Password<input type="password" name="password" required placeholder="••••••••"></label>
+            <label>Rol
+                <select name="rol">
+                    <option value="guardia">guardia</option>
+                    <option value="comite">comite</option>
+                    <option value="admin">admin</option>
+                </select>
+            </label>
+            <button class="full" type="submit">Crear usuario</button>
+        </form>
+    </div>
+    <div class="card">
+        <h2>Listado de usuarios</h2>
+        <div class="table-wrap"><table>
+            <tr><th>ID</th><th>Username</th><th>Rol</th><th>Estado</th><th>Creado en</th><th>Acciones</th></tr>
+            {filas}
+        </table></div>
+    </div>
+    <div class="actions">
+        <a class="btn" href="/">Inicio</a>
+        <a class="btn" href="/dashboard-condominio">Dashboard</a>
+    </div>
+    """
+    return layout("Admin usuarios", contenido, usuario)
+
+
+@app.post("/admin/usuarios/crear")
+def admin_usuarios_crear(
+    admin_session: str | None = Cookie(default=None),
+    username: str = Form(...),
+    password: str = Form(...),
+    rol: str = Form(...),
+):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+    if rol not in {"admin", "guardia", "comite"}:
+        return HTMLResponse("Rol inválido", status_code=400)
+
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO usuarios (username, password_hash, rol, activo)
+                VALUES (%s, %s, %s, TRUE)
+                ON CONFLICT (username) DO NOTHING
+                """,
+                (username.strip(), password_hash, rol),
+            )
+        conn.commit()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+
+@app.get("/admin/usuarios/toggle/{user_id}")
+def admin_usuarios_toggle(user_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT username, activo FROM usuarios WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                return RedirectResponse(url="/admin/usuarios", status_code=303)
+            if user[0] == usuario.get("username"):
+                return HTMLResponse("No puedes desactivar tu propio usuario.", status_code=400)
+            cursor.execute("UPDATE usuarios SET activo = NOT activo WHERE id = %s", (user_id,))
+        conn.commit()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+
+@app.post("/admin/usuarios/rol/{user_id}")
+def admin_usuarios_cambiar_rol(
+    user_id: int,
+    admin_session: str | None = Cookie(default=None),
+    rol: str = Form(...),
+):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+    if rol not in {"admin", "guardia", "comite"}:
+        return HTMLResponse("Rol inválido", status_code=400)
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("UPDATE usuarios SET rol = %s WHERE id = %s", (rol, user_id))
+        conn.commit()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+
+@app.get("/admin/usuarios/eliminar/{user_id}")
+def admin_usuarios_eliminar(user_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT username FROM usuarios WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+            if user and user[0] == usuario.get("username"):
+                return HTMLResponse("No puedes eliminar tu propio usuario.", status_code=400)
+            cursor.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
+        conn.commit()
+    return RedirectResponse(url="/admin/usuarios", status_code=303)
 
 
 def obtener_o_crear_departamento(cursor, torre, numero):
