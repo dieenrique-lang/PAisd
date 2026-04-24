@@ -2,6 +2,7 @@ from datetime import datetime
 from html import escape
 from io import BytesIO
 import os
+from zoneinfo import ZoneInfo
 
 import bcrypt
 import psycopg
@@ -121,6 +122,10 @@ def render_delete_action(es_admin: bool, href: str, confirm_text: str):
         f"<a class='btn red' href='{h(href)}' "
         f"onclick=\"return confirm('{h(confirm_text)}')\">Eliminar</a>"
     )
+
+
+def ahora_chile() -> datetime:
+    return datetime.now(ZoneInfo("America/Santiago")).replace(tzinfo=None)
 
 
 def layout(titulo: str, contenido: str):
@@ -595,15 +600,16 @@ def guardar_visita(
     autorizado_por: str = Form(""),
     observacion: str = Form(""),
 ):
+    hora_ingreso = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
             cursor.execute(
                 """
-                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion),
+                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, hora_ingreso),
             )
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
@@ -611,15 +617,16 @@ def guardar_visita(
 
 @app.get("/salida-visita/{visita_id}")
 def salida_visita(visita_id: int):
+    hora_salida = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 """
                 UPDATE visitas
-                SET hora_salida = NOW()
+                SET hora_salida = %s
                 WHERE id = %s AND hora_salida IS NULL
                 """,
-                (visita_id,),
+                (hora_salida, visita_id),
             )
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
@@ -654,7 +661,7 @@ def dashboard_condominio():
             top_deptos = cursor.fetchall()
 
     top_html = "".join(f"<li>{format_depto(d[0], d[1])}: {d[2]} visitas</li>" for d in top_deptos) or "<li>No hay datos</li>"
-    ahora = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ahora = ahora_chile().strftime("%Y-%m-%d %H:%M")
 
     contenido = f"""
     <div class="hero"><h1>Dashboard Condominio</h1><p>Resumen operativo para administración y comité.</p></div>
@@ -719,7 +726,7 @@ def exportar_visitas():
     for visita in visitas:
         ws.append(list(visita))
 
-    for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I"]:
+    for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]:
         ws.column_dimensions[col].width = 22
 
     archivo = BytesIO()
