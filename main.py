@@ -603,13 +603,21 @@ with conectar() as conn:
     with conn.cursor() as cursor:
         dep_id = obtener_o_crear_departamento(cursor, torre, numero)
 
-        cursor.execute(
-            """
-            INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-            (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, ahora_chile())
-        )
+cursor.execute(
+    """
+    INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """,
+    (
+        nombre,
+        rut,
+        patente.upper(),
+        dep_id,
+        autorizado_por,
+        observacion,
+        ahora_chile()
+    )
+)
 
         conn.commit()
 
