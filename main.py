@@ -280,7 +280,24 @@ def layout(titulo: str, contenido: str, usuario=None):
                 top: 0;
                 height: 100vh;
             }}
-            .brand {{ font-size: 1.25rem; font-weight: 800; margin-bottom: 18px; color: #fff; }}
+            .logo {{
+                display:flex;
+                align-items:center;
+                gap:10px;
+                margin-bottom: 18px;
+            }}
+            .logo-icon {{
+                width: 34px;
+                height: 34px;
+                border-radius: 10px;
+                background: linear-gradient(145deg, #2563eb, #1e40af);
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-size: 1.05rem;
+                box-shadow: 0 8px 16px rgba(37,99,235,.3);
+            }}
+            .logo-text {{ font-size: 1.1rem; font-weight: 800; color: #fff; letter-spacing:.01em; }}
             .sidebar a {{
                 display: block;
                 padding: 10px 12px;
@@ -382,7 +399,10 @@ def layout(titulo: str, contenido: str, usuario=None):
     <body>
         <div class="app-layout">
             <aside class="sidebar">
-                <div class="brand">🏢 CondoControl</div>
+                <div class="logo">
+                    <div class="logo-icon">🏢</div>
+                    <div class="logo-text">CondoControl</div>
+                </div>
                 <a href="/dashboard-condominio">📊 Dashboard</a>
                 <a href="/residentes">👥 Residentes</a>
                 <a href="/vehiculos">🚗 Vehículos</a>
