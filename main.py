@@ -32,6 +32,17 @@ def crear_tablas():
         with conn.cursor() as cursor:
             cursor.execute(
                 """
+                CREATE TABLE IF NOT EXISTS condominios (
+                    id SERIAL PRIMARY KEY,
+                    nombre TEXT NOT NULL,
+                    slug TEXT UNIQUE NOT NULL,
+                    activo BOOLEAN DEFAULT TRUE,
+                    creado_en TIMESTAMP DEFAULT NOW()
+                )
+                """
+            )
+            cursor.execute(
+                """
                 CREATE TABLE IF NOT EXISTS departamentos (
                     id SERIAL PRIMARY KEY,
                     torre TEXT,
@@ -40,6 +51,7 @@ def crear_tablas():
                 )
                 """
             )
+            cursor.execute("ALTER TABLE departamentos ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS residentes (
@@ -52,6 +64,7 @@ def crear_tablas():
                 )
                 """
             )
+            cursor.execute("ALTER TABLE residentes ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS vehiculos (
@@ -66,6 +79,7 @@ def crear_tablas():
                 """
             )
             cursor.execute("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS estacionamiento TEXT")
+            cursor.execute("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS visitas (
@@ -82,6 +96,7 @@ def crear_tablas():
                 """
             )
             cursor.execute("ALTER TABLE visitas ADD COLUMN IF NOT EXISTS patente TEXT")
+            cursor.execute("ALTER TABLE visitas ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS encomiendas (
@@ -98,11 +113,12 @@ def crear_tablas():
                 )
                 """
             )
+            cursor.execute("ALTER TABLE encomiendas ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS usuarios (
                     id SERIAL PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
+                    username TEXT NOT NULL,
                     password_hash TEXT NOT NULL,
                     rol TEXT NOT NULL,
                     activo BOOLEAN DEFAULT TRUE,
@@ -110,23 +126,68 @@ def crear_tablas():
                 )
                 """
             )
-            cursor.execute("SELECT COUNT(*) FROM usuarios")
+            cursor.execute("ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
+            cursor.execute("ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_username_key")
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_usuarios_condominio_username
+                ON usuarios (condominio_id, username)
+                """
+            )
+            cursor.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_departamentos_condominio_torre_numero
+                ON departamentos (condominio_id, torre, numero)
+                """
+            )
+
+            cursor.execute("SELECT id FROM condominios WHERE slug = 'demo'")
+            demo = cursor.fetchone()
+            if demo:
+                demo_id = demo[0]
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO condominios (nombre, slug, activo)
+                    VALUES (%s, %s, TRUE)
+                    RETURNING id
+                    """,
+                    ("Condominio Demo", "demo"),
+                )
+                demo_id = cursor.fetchone()[0]
+
+            cursor.execute("UPDATE departamentos SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+            cursor.execute("UPDATE residentes SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+            cursor.execute("UPDATE vehiculos SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+            cursor.execute("UPDATE visitas SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+            cursor.execute("UPDATE encomiendas SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+            cursor.execute("UPDATE usuarios SET condominio_id = %s WHERE condominio_id IS NULL", (demo_id,))
+
+            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE condominio_id = %s", (demo_id,))
             total_usuarios = cursor.fetchone()[0]
             if total_usuarios == 0 and ADMIN_PASSWORD_HASH:
                 cursor.execute(
                     """
-                    INSERT INTO usuarios (username, password_hash, rol, activo)
-                    VALUES (%s, %s, %s, TRUE)
-                    ON CONFLICT (username) DO NOTHING
+                    INSERT INTO usuarios (username, password_hash, rol, activo, condominio_id)
+                    VALUES (%s, %s, %s, TRUE, %s)
+                    ON CONFLICT (condominio_id, username) DO NOTHING
                     """,
-                    (ADMIN_USERNAME, ADMIN_PASSWORD_HASH, "admin"),
+                    (ADMIN_USERNAME, ADMIN_PASSWORD_HASH, "admin", demo_id),
                 )
         conn.commit()
 
 
 # ---------- Auth admin ----------
-def crear_token_sesion(username: str, rol: str):
-    return serializer.dumps({"username": username, "rol": rol})
+def crear_token_sesion(username: str, rol: str, condominio_id: int, condominio_nombre: str, condominio_slug: str):
+    return serializer.dumps(
+        {
+            "username": username,
+            "rol": rol,
+            "condominio_id": condominio_id,
+            "condominio_nombre": condominio_nombre,
+            "condominio_slug": condominio_slug,
+        }
+    )
 
 
 def require_login(token: str | None):
@@ -136,8 +197,17 @@ def require_login(token: str | None):
         data = serializer.loads(token)
         username = data.get("username")
         rol = data.get("rol")
-        if username and rol:
-            return {"username": username, "rol": rol}
+        condominio_id = data.get("condominio_id")
+        condominio_nombre = data.get("condominio_nombre")
+        condominio_slug = data.get("condominio_slug")
+        if username and rol and condominio_id:
+            return {
+                "username": username,
+                "rol": rol,
+                "condominio_id": condominio_id,
+                "condominio_nombre": condominio_nombre or "",
+                "condominio_slug": condominio_slug or "demo",
+            }
     except BadSignature:
         return None
     return None
@@ -151,6 +221,10 @@ def verificar_password_admin(password: str):
 
 def puede_admin(usuario):
     return bool(usuario and usuario.get("rol") == "admin")
+
+
+def puede_superadmin(usuario):
+    return bool(usuario and usuario.get("rol") == "superadmin")
 
 
 def puede_guardia(usuario):
@@ -204,6 +278,10 @@ def no_permisos_response(usuario):
     </div>
     """
     return HTMLResponse(layout("Sin permisos", contenido, usuario))
+
+
+def condominio_actual_id(usuario):
+    return int(usuario.get("condominio_id", 0)) if usuario else 0
 
 
 # ---------- Helpers UI ----------
@@ -262,12 +340,16 @@ def render_resultado_importacion(titulo: str, volver_url: str, importados: int, 
 def layout(titulo: str, contenido: str, usuario=None):
     usuario_label = "Sesión invitado"
     usuario_badge = "badge dark"
+    condominio_label = "Sin condominio"
     admin_link = ""
     if usuario:
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
+        condominio_label = h(usuario.get("condominio_nombre") or "Condominio")
         usuario_badge = "badge info"
         if usuario.get("rol") == "admin":
             admin_link = '<a href="/admin/usuarios">👤 Usuarios</a><a href="/admin/restablecer">🧨 Restablecer datos</a>'
+        if usuario.get("rol") == "superadmin":
+            admin_link += '<a href="/superadmin">🛡️ Superadmin</a>'
     return f"""
     <html>
     <head>
@@ -428,7 +510,7 @@ def layout(titulo: str, contenido: str, usuario=None):
             <aside class="sidebar">
                 <div class="logo">
                     <div class="logo-icon">🏢</div>
-                    <div class="logo-text">CondoControl</div>
+                    <div class="logo-text">CondoControl<br><small style="font-size:12px;color:#94a3b8;">{condominio_label}</small></div>
                 </div>
                 <a href="/dashboard-condominio">📊 Dashboard</a>
                 <a href="/residentes">👥 Residentes</a>
@@ -484,12 +566,12 @@ def inicio(admin_session: str | None = Cookie(default=None)):
     return layout("CondoControl", contenido, usuario)
 
 
-@app.get("/admin/login", response_class=HTMLResponse)
-def admin_login_form():
-    contenido = """
+def render_login_form(condominio_slug: str, condominio_nombre: str):
+    contenido = f"""
     <div class="card" style="max-width:460px;margin:auto;">
-        <h2>Acceso administrador</h2>
-        <form action="/admin/login" method="post">
+        <h2>Acceso · {h(condominio_nombre)}</h2>
+        <p class="muted">Condominio: <strong>{h(condominio_slug)}</strong></p>
+        <form action="/c/{h(condominio_slug)}/login" method="post">
             <label>Usuario<input name="username" placeholder="Usuario" required></label>
             <label>Contraseña<input name="password" type="password" placeholder="Contraseña" required></label>
             <button class="full" type="submit">Entrar</button>
@@ -497,24 +579,41 @@ def admin_login_form():
         <div class="actions"><a class="btn dark" href="/">Volver</a></div>
     </div>
     """
-    return layout("Login admin", contenido)
+    return layout("Login", contenido)
 
 
-@app.post("/admin/login")
-def admin_login(username: str = Form(...), password: str = Form(...)):
-    usuario_db = None
-    total_usuarios = 0
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_form():
+    return RedirectResponse(url="/c/demo/login", status_code=303)
+
+
+@app.get("/c/{slug}/login", response_class=HTMLResponse)
+def condominio_login_form(slug: str):
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM usuarios")
-            total_usuarios = cursor.fetchone()[0]
+            cursor.execute("SELECT id, nombre, activo FROM condominios WHERE slug = %s", (slug,))
+            condo = cursor.fetchone()
+    if not condo or not condo[2]:
+        return HTMLResponse("<h3>Condominio no disponible.</h3>", status_code=404)
+    return render_login_form(slug, condo[1])
+
+
+def login_en_condominio(slug: str, username: str, password: str):
+    usuario_db = None
+    condo = None
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, nombre, slug, activo FROM condominios WHERE slug = %s", (slug,))
+            condo = cursor.fetchone()
+            if not condo or not condo[3]:
+                return HTMLResponse("<h3>Condominio no disponible.</h3>", status_code=404)
             cursor.execute(
                 """
                 SELECT username, password_hash, rol, activo
                 FROM usuarios
-                WHERE username = %s
+                WHERE username = %s AND condominio_id = %s
                 """,
-                (username,),
+                (username, condo[0]),
             )
             usuario_db = cursor.fetchone()
 
@@ -523,17 +622,20 @@ def admin_login(username: str = Form(...), password: str = Form(...)):
     if usuario_db and usuario_db[3]:
         login_ok = bcrypt.checkpw(password.encode("utf-8"), usuario_db[1].encode("utf-8"))
         rol = usuario_db[2]
-    elif total_usuarios == 0 and username == ADMIN_USERNAME and verificar_password_admin(password):
-        login_ok = True
-        rol = "admin"
 
     if not login_ok:
-        return HTMLResponse("<h3>Credenciales incorrectas</h3><a href='/admin/login'>Volver</a>", status_code=401)
+        return HTMLResponse(f"<h3>Credenciales incorrectas</h3><a href='/c/{h(slug)}/login'>Volver</a>", status_code=401)
 
     response = RedirectResponse(url="/", status_code=303)
     response.set_cookie(
         key="admin_session",
-        value=crear_token_sesion(username=username, rol=rol),
+        value=crear_token_sesion(
+            username=username,
+            rol=rol,
+            condominio_id=condo[0],
+            condominio_nombre=condo[1],
+            condominio_slug=condo[2],
+        ),
         httponly=True,
         samesite="lax",
         secure=False,
@@ -541,11 +643,122 @@ def admin_login(username: str = Form(...), password: str = Form(...)):
     return response
 
 
+@app.post("/admin/login")
+def admin_login(username: str = Form(...), password: str = Form(...)):
+    return login_en_condominio("demo", username, password)
+
+
+@app.post("/c/{slug}/login")
+def condominio_login(slug: str, username: str = Form(...), password: str = Form(...)):
+    return login_en_condominio(slug, username, password)
+
+
 @app.get("/admin/logout")
 def admin_logout():
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("admin_session")
     return response
+
+
+@app.get("/superadmin", response_class=HTMLResponse)
+def superadmin_panel(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return no_permisos_response(usuario)
+    return RedirectResponse(url="/superadmin/condominios", status_code=303)
+
+
+@app.get("/superadmin/condominios", response_class=HTMLResponse)
+def superadmin_condominios(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return no_permisos_response(usuario)
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, nombre, slug, activo, creado_en FROM condominios ORDER BY id ASC")
+            data = cursor.fetchall()
+    filas = "".join(
+        f"<tr><td>{c[0]}</td><td>{h(c[1])}</td><td>{h(c[2])}</td><td>{badge_estado('Activo','success') if c[3] else badge_estado('Inactivo','warning')}</td><td>{h(c[4])}</td><td><a class='btn dark' href='/superadmin/condominios/toggle/{c[0]}'>Toggle</a> <a class='btn' href='/superadmin/condominios/{c[0]}/usuarios'>Usuarios</a></td></tr>"
+        for c in data
+    )
+    contenido = f"""
+    <div class="hero"><h1>Superadmin</h1><p>Gestión de condominios.</p></div>
+    <div class="card">
+        <h2>Crear condominio</h2>
+        <form action="/superadmin/condominios/crear" method="post">
+            <label>Nombre<input name="nombre" required></label>
+            <label>Slug<input name="slug" required placeholder="mi-condominio"></label>
+            <button class="full" type="submit">Crear</button>
+        </form>
+    </div>
+    <div class="card"><h2>Listado condominios</h2><div class="table-wrap"><table>
+    <tr><th>ID</th><th>Nombre</th><th>Slug</th><th>Estado</th><th>Creado</th><th>Acción</th></tr>
+    {filas}
+    </table></div></div>
+    """
+    return layout("Superadmin", contenido, usuario)
+
+
+@app.post("/superadmin/condominios/crear")
+def superadmin_condominios_crear(
+    admin_session: str | None = Cookie(default=None),
+    nombre: str = Form(...),
+    slug: str = Form(...),
+):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return no_permisos_response(usuario)
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO condominios (nombre, slug, activo) VALUES (%s, %s, TRUE) ON CONFLICT (slug) DO NOTHING",
+                (nombre.strip(), slug.strip().lower()),
+            )
+        conn.commit()
+    return RedirectResponse(url="/superadmin/condominios", status_code=303)
+
+
+@app.get("/superadmin/condominios/toggle/{condominio_id}")
+def superadmin_condominios_toggle(condominio_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return no_permisos_response(usuario)
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("UPDATE condominios SET activo = NOT activo WHERE id = %s", (condominio_id,))
+        conn.commit()
+    return RedirectResponse(url="/superadmin/condominios", status_code=303)
+
+
+@app.get("/superadmin/condominios/{condominio_id}/usuarios", response_class=HTMLResponse)
+def superadmin_condominio_usuarios(condominio_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return no_permisos_response(usuario)
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT nombre, slug FROM condominios WHERE id = %s", (condominio_id,))
+            condo = cursor.fetchone()
+            cursor.execute(
+                "SELECT id, username, rol, activo, creado_en FROM usuarios WHERE condominio_id = %s ORDER BY id ASC",
+                (condominio_id,),
+            )
+            data = cursor.fetchall()
+    if not condo:
+        return HTMLResponse("Condominio no encontrado", status_code=404)
+    filas = "".join(
+        f"<tr><td>{u[0]}</td><td>{h(u[1])}</td><td>{h(u[2])}</td><td>{'Activo' if u[3] else 'Inactivo'}</td><td>{h(u[4])}</td></tr>"
+        for u in data
+    )
+    contenido = f"""
+    <div class="hero"><h1>Usuarios · {h(condo[0])}</h1><p>Slug: {h(condo[1])}</p></div>
+    <div class="card"><div class="table-wrap"><table>
+    <tr><th>ID</th><th>Username</th><th>Rol</th><th>Activo</th><th>Creado</th></tr>
+    {filas}
+    </table></div></div>
+    <div class="actions"><a class="btn" href="/superadmin/condominios">Volver</a></div>
+    """
+    return layout("Superadmin usuarios", contenido, usuario)
 
 
 @app.get("/admin/usuarios", response_class=HTMLResponse)
@@ -556,12 +769,15 @@ def admin_usuarios(admin_session: str | None = Cookie(default=None)):
 
     with conectar() as conn:
         with conn.cursor() as cursor:
+            condominio_id = condominio_actual_id(usuario)
             cursor.execute(
                 """
                 SELECT id, username, rol, activo, creado_en
                 FROM usuarios
+                WHERE condominio_id = %s
                 ORDER BY id ASC
-                """
+                """,
+                (condominio_id,),
             )
             data = cursor.fetchall()
 
@@ -641,13 +857,14 @@ def admin_usuarios_crear(
     password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     with conectar() as conn:
         with conn.cursor() as cursor:
+            condominio_id = condominio_actual_id(usuario)
             cursor.execute(
                 """
-                INSERT INTO usuarios (username, password_hash, rol, activo)
-                VALUES (%s, %s, %s, TRUE)
-                ON CONFLICT (username) DO NOTHING
+                INSERT INTO usuarios (username, password_hash, rol, activo, condominio_id)
+                VALUES (%s, %s, %s, TRUE, %s)
+                ON CONFLICT (condominio_id, username) DO NOTHING
                 """,
-                (username.strip(), password_hash, rol),
+                (username.strip(), password_hash, rol, condominio_id),
             )
         conn.commit()
     return RedirectResponse(url="/admin/usuarios", status_code=303)
@@ -661,13 +878,19 @@ def admin_usuarios_toggle(user_id: int, admin_session: str | None = Cookie(defau
 
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT username, activo FROM usuarios WHERE id = %s", (user_id,))
+            cursor.execute(
+                "SELECT username, activo FROM usuarios WHERE id = %s AND condominio_id = %s",
+                (user_id, condominio_actual_id(usuario)),
+            )
             user = cursor.fetchone()
             if not user:
                 return RedirectResponse(url="/admin/usuarios", status_code=303)
             if user[0] == usuario.get("username"):
                 return HTMLResponse("No puedes desactivar tu propio usuario.", status_code=400)
-            cursor.execute("UPDATE usuarios SET activo = NOT activo WHERE id = %s", (user_id,))
+            cursor.execute(
+                "UPDATE usuarios SET activo = NOT activo WHERE id = %s AND condominio_id = %s",
+                (user_id, condominio_actual_id(usuario)),
+            )
         conn.commit()
     return RedirectResponse(url="/admin/usuarios", status_code=303)
 
@@ -686,7 +909,10 @@ def admin_usuarios_cambiar_rol(
 
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("UPDATE usuarios SET rol = %s WHERE id = %s", (rol, user_id))
+            cursor.execute(
+                "UPDATE usuarios SET rol = %s WHERE id = %s AND condominio_id = %s",
+                (rol, user_id, condominio_actual_id(usuario)),
+            )
         conn.commit()
     return RedirectResponse(url="/admin/usuarios", status_code=303)
 
@@ -699,11 +925,17 @@ def admin_usuarios_eliminar(user_id: int, admin_session: str | None = Cookie(def
 
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT username FROM usuarios WHERE id = %s", (user_id,))
+            cursor.execute(
+                "SELECT username FROM usuarios WHERE id = %s AND condominio_id = %s",
+                (user_id, condominio_actual_id(usuario)),
+            )
             user = cursor.fetchone()
             if user and user[0] == usuario.get("username"):
                 return HTMLResponse("No puedes eliminar tu propio usuario.", status_code=400)
-            cursor.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
+            cursor.execute(
+                "DELETE FROM usuarios WHERE id = %s AND condominio_id = %s",
+                (user_id, condominio_actual_id(usuario)),
+            )
         conn.commit()
     return RedirectResponse(url="/admin/usuarios", status_code=303)
 
@@ -761,32 +993,20 @@ def admin_restablecer(
 
     tablas_operativas = ("residentes", "vehiculos", "visitas", "encomiendas", "departamentos")
     resumen = {tabla: -1 for tabla in tablas_operativas}
+    condominio_id = condominio_actual_id(usuario)
     conn = None
     try:
         conn = conectar()
         with conn.cursor() as cursor:
-            cursor.execute("TRUNCATE TABLE visitas, encomiendas, vehiculos, residentes, departamentos RESTART IDENTITY CASCADE;")
+            cursor.execute("DELETE FROM visitas WHERE condominio_id = %s", (condominio_id,))
+            cursor.execute("DELETE FROM encomiendas WHERE condominio_id = %s", (condominio_id,))
+            cursor.execute("DELETE FROM vehiculos WHERE condominio_id = %s", (condominio_id,))
+            cursor.execute("DELETE FROM residentes WHERE condominio_id = %s", (condominio_id,))
+            cursor.execute("DELETE FROM departamentos WHERE condominio_id = %s", (condominio_id,))
 
             for tabla in tablas_operativas:
-                cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
+                cursor.execute(f"SELECT COUNT(*) FROM {tabla} WHERE condominio_id = %s", (condominio_id,))
                 resumen[tabla] = cursor.fetchone()[0]
-
-            if any(conteo > 0 for conteo in resumen.values()):
-                cursor.execute("DELETE FROM visitas;")
-                cursor.execute("DELETE FROM encomiendas;")
-                cursor.execute("DELETE FROM vehiculos;")
-                cursor.execute("DELETE FROM residentes;")
-                cursor.execute("DELETE FROM departamentos;")
-
-                cursor.execute("ALTER SEQUENCE visitas_id_seq RESTART WITH 1;")
-                cursor.execute("ALTER SEQUENCE encomiendas_id_seq RESTART WITH 1;")
-                cursor.execute("ALTER SEQUENCE vehiculos_id_seq RESTART WITH 1;")
-                cursor.execute("ALTER SEQUENCE residentes_id_seq RESTART WITH 1;")
-                cursor.execute("ALTER SEQUENCE departamentos_id_seq RESTART WITH 1;")
-
-                for tabla in tablas_operativas:
-                    cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
-                    resumen[tabla] = cursor.fetchone()[0]
 
             if any(conteo > 0 for conteo in resumen.values()):
                 raise RuntimeError("No fue posible restablecer completamente todas las tablas operativas.")
@@ -830,13 +1050,15 @@ def admin_restablecer(
     return HTMLResponse(layout("Restablecimiento completado", contenido, usuario))
 
 
-def obtener_o_crear_departamento(cursor, torre, numero):
+def obtener_o_crear_departamento(cursor, condominio_id, torre, numero):
     cursor.execute(
         """
         SELECT id FROM departamentos
-        WHERE COALESCE(torre, '') = COALESCE(%s, '') AND numero = %s
+        WHERE condominio_id = %s
+          AND COALESCE(torre, '') = COALESCE(%s, '')
+          AND numero = %s
         """,
-        (torre, numero),
+        (condominio_id, torre, numero),
     )
     dep = cursor.fetchone()
     if dep:
@@ -844,11 +1066,11 @@ def obtener_o_crear_departamento(cursor, torre, numero):
 
     cursor.execute(
         """
-        INSERT INTO departamentos (torre, numero)
-        VALUES (%s, %s)
+        INSERT INTO departamentos (torre, numero, condominio_id)
+        VALUES (%s, %s, %s)
         RETURNING id
         """,
-        (torre, numero),
+        (torre, numero, condominio_id),
     )
     return cursor.fetchone()[0]
 
@@ -859,10 +1081,11 @@ def residentes(q: str = Query(default=""), admin_session: str | None = Cookie(de
     if not puede_ver_residentes(usuario):
         return no_permisos_response(usuario)
     es_admin = puede_escribir_residentes(usuario)
+    condominio_id = condominio_actual_id(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            where_parts = []
-            params = []
+            where_parts = ["r.condominio_id = %s"]
+            params = [condominio_id]
             if q:
                 like = f"%{q}%"
                 where_parts.append(
@@ -984,13 +1207,13 @@ def guardar_residente(
         return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+            dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
             cursor.execute(
                 """
-                INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id, condominio_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (nombre, telefono, email, tipo, dep_id),
+                (nombre, telefono, email, tipo, dep_id, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/residentes", status_code=303)
@@ -1045,13 +1268,13 @@ async def importar_residentes(admin_session: str | None = Cookie(default=None), 
                     if not tipo:
                         tipo = "Residente"
 
-                    dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+                    dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
                     cursor.execute(
                         """
-                        INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id, condominio_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (nombre, telefono, email, tipo, dep_id),
+                        (nombre, telefono, email, tipo, dep_id, condominio_actual_id(usuario)),
                     )
                     conn.commit()
                     importados += 1
@@ -1071,7 +1294,10 @@ def eliminar_residente(residente_id: int, admin_session: str | None = Cookie(def
 
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM residentes WHERE id = %s", (residente_id,))
+            cursor.execute(
+                "DELETE FROM residentes WHERE id = %s AND condominio_id = %s",
+                (residente_id, condominio_actual_id(usuario)),
+            )
         conn.commit()
     return RedirectResponse(url="/residentes", status_code=303)
 
@@ -1082,10 +1308,11 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
     if not puede_ver_vehiculos(usuario):
         return no_permisos_response(usuario)
     es_admin = puede_escribir_vehiculos(usuario)
+    condominio_id = condominio_actual_id(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            where_parts = []
-            params = []
+            where_parts = ["v.condominio_id = %s"]
+            params = [condominio_id]
             if q:
                 like = f"%{q}%"
                 where_parts.append(
@@ -1196,13 +1423,13 @@ def guardar_vehiculo(
         return no_permisos_response(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+            dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
             cursor.execute(
                 """
-                INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id, condominio_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (patente.upper(), marca, modelo, color, estacionamiento, dep_id),
+                (patente.upper(), marca, modelo, color, estacionamiento, dep_id, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/vehiculos", status_code=303)
@@ -1261,13 +1488,13 @@ async def importar_vehiculos(admin_session: str | None = Cookie(default=None), a
                         errores.append(f"Fila {fila_num}: patente y numero son obligatorios.")
                         continue
 
-                    dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+                    dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
                     cursor.execute(
                         """
-                        INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
+                        INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id, condominio_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
                         """,
-                        (patente.upper(), marca, modelo, color, estacionamiento, dep_id),
+                        (patente.upper(), marca, modelo, color, estacionamiento, dep_id, condominio_actual_id(usuario)),
                     )
                     conn.commit()
                     importados += 1
@@ -1287,7 +1514,10 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
 
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM vehiculos WHERE id = %s", (vehiculo_id,))
+            cursor.execute(
+                "DELETE FROM vehiculos WHERE id = %s AND condominio_id = %s",
+                (vehiculo_id, condominio_actual_id(usuario)),
+            )
         conn.commit()
     return RedirectResponse(url="/vehiculos", status_code=303)
 
@@ -1298,10 +1528,11 @@ def visitas(q: str = Query(default=""), solo_dentro: int = Query(default=0), adm
     if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
         return no_permisos_response(usuario)
     puede_escribir = puede_escribir_visitas(usuario)
+    condominio_id = condominio_actual_id(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            where_parts = []
-            params = []
+            where_parts = ["v.condominio_id = %s"]
+            params = [condominio_id]
             if q:
                 like = f"%{q}%"
                 where_parts.append(
@@ -1425,13 +1656,13 @@ def guardar_visita(
     hora_ingreso = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
-            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+            dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
             cursor.execute(
                 """
-                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO visitas (nombre, rut, patente, departamento_id, autorizado_por, observacion, hora_ingreso, condominio_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, hora_ingreso),
+                (nombre, rut, patente.upper(), dep_id, autorizado_por, observacion, hora_ingreso, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
@@ -1449,9 +1680,9 @@ def salida_visita(visita_id: int, admin_session: str | None = Cookie(default=Non
                 """
                 UPDATE visitas
                 SET hora_salida = %s
-                WHERE id = %s AND hora_salida IS NULL
+                WHERE id = %s AND hora_salida IS NULL AND condominio_id = %s
                 """,
-                (hora_salida, visita_id),
+                (hora_salida, visita_id, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/visitas", status_code=303)
@@ -1463,10 +1694,11 @@ def encomiendas(q: str = Query(default=""), solo_pendientes: int = Query(default
     if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
         return no_permisos_response(usuario)
     puede_escribir = puede_escribir_encomiendas(usuario)
+    condominio_id = condominio_actual_id(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            where_parts = []
-            params = []
+            where_parts = ["e.condominio_id = %s"]
+            params = [condominio_id]
             if q:
                 like = f"%{q}%"
                 where_parts.append(
@@ -1593,16 +1825,16 @@ def guardar_encomienda(
     fecha_recepcion = ahora_chile()
     with conectar() as conn:
         with conn.cursor() as cursor:
-            dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+            dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
             cursor.execute(
                 """
                 INSERT INTO encomiendas (
                     nombre_receptor, departamento_id, descripcion, recibido_por,
-                    fecha_recepcion, observacion
+                    fecha_recepcion, observacion, condominio_id
                 )
-                VALUES (%s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
-                (nombre_receptor, dep_id, descripcion, recibido_por, fecha_recepcion, observacion),
+                (nombre_receptor, dep_id, descripcion, recibido_por, fecha_recepcion, observacion, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/encomiendas", status_code=303)
@@ -1621,9 +1853,9 @@ def entregar_encomienda(encomienda_id: int, entregado_a: str = Query(default="")
                 """
                 UPDATE encomiendas
                 SET entregado = TRUE, fecha_entrega = %s, entregado_a = %s
-                WHERE id = %s AND entregado = FALSE
+                WHERE id = %s AND entregado = FALSE AND condominio_id = %s
                 """,
-                (fecha_entrega, entregado_a_value, encomienda_id),
+                (fecha_entrega, entregado_a_value, encomienda_id, condominio_actual_id(usuario)),
             )
         conn.commit()
     return RedirectResponse(url="/encomiendas", status_code=303)
@@ -1634,28 +1866,30 @@ def dashboard_condominio(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not puede_ver_dashboard(usuario):
         return no_permisos_response(usuario)
+    condominio_id = condominio_actual_id(usuario)
     with conectar() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM residentes")
+            cursor.execute("SELECT COUNT(*) FROM residentes WHERE condominio_id = %s", (condominio_id,))
             total_residentes = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM vehiculos")
+            cursor.execute("SELECT COUNT(*) FROM vehiculos WHERE condominio_id = %s", (condominio_id,))
             total_vehiculos = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM visitas WHERE DATE(hora_ingreso) = CURRENT_DATE")
+            cursor.execute("SELECT COUNT(*) FROM visitas WHERE condominio_id = %s AND DATE(hora_ingreso) = CURRENT_DATE", (condominio_id,))
             visitas_hoy = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM visitas WHERE hora_salida IS NULL")
+            cursor.execute("SELECT COUNT(*) FROM visitas WHERE condominio_id = %s AND hora_salida IS NULL", (condominio_id,))
             visitas_dentro = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE entregado = FALSE")
+            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE condominio_id = %s AND entregado = FALSE", (condominio_id,))
             encomiendas_pendientes = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE DATE(fecha_recepcion) = CURRENT_DATE")
+            cursor.execute("SELECT COUNT(*) FROM encomiendas WHERE condominio_id = %s AND DATE(fecha_recepcion) = CURRENT_DATE", (condominio_id,))
             encomiendas_recibidas_hoy = cursor.fetchone()[0]
 
             cursor.execute(
-                "SELECT COUNT(*) FROM encomiendas WHERE entregado = TRUE AND DATE(fecha_entrega) = CURRENT_DATE"
+                "SELECT COUNT(*) FROM encomiendas WHERE condominio_id = %s AND entregado = TRUE AND DATE(fecha_entrega) = CURRENT_DATE",
+                (condominio_id,),
             )
             encomiendas_entregadas_hoy = cursor.fetchone()[0]
 
@@ -1664,10 +1898,12 @@ def dashboard_condominio(admin_session: str | None = Cookie(default=None)):
                 SELECT d.torre, d.numero, COUNT(v.id) AS total
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
+                WHERE v.condominio_id = %s
                 GROUP BY d.torre, d.numero
                 ORDER BY total DESC
                 LIMIT 5
-                """
+                """,
+                (condominio_id,),
             )
             top_deptos = cursor.fetchall()
 
@@ -1714,8 +1950,10 @@ def exportar_visitas(admin_session: str | None = Cookie(default=None)):
                        v.observacion, v.hora_ingreso, v.hora_salida
                 FROM visitas v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
+                WHERE v.condominio_id = %s
                 ORDER BY v.id DESC
-                """
+                """,
+                (condominio_actual_id(usuario),),
             )
             visitas = cursor.fetchall()
 
@@ -1776,8 +2014,10 @@ def exportar_encomiendas(admin_session: str | None = Cookie(default=None)):
                        e.fecha_recepcion, e.entregado, e.fecha_entrega, e.entregado_a, e.observacion
                 FROM encomiendas e
                 LEFT JOIN departamentos d ON e.departamento_id = d.id
+                WHERE e.condominio_id = %s
                 ORDER BY e.id DESC
-                """
+                """,
+                (condominio_actual_id(usuario),),
             )
             data = cursor.fetchall()
 
