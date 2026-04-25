@@ -18,6 +18,8 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esto")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
+SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", ADMIN_USERNAME)
+SUPERADMIN_PASSWORD_HASH = os.getenv("SUPERADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH)
 
 serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
 
@@ -46,12 +48,30 @@ def crear_tablas():
                 CREATE TABLE IF NOT EXISTS departamentos (
                     id SERIAL PRIMARY KEY,
                     torre TEXT,
-                    numero TEXT NOT NULL,
-                    UNIQUE(torre, numero)
+                    numero TEXT NOT NULL
                 )
                 """
             )
             cursor.execute("ALTER TABLE departamentos ADD COLUMN IF NOT EXISTS condominio_id INTEGER REFERENCES condominios(id)")
+            cursor.execute("ALTER TABLE departamentos DROP CONSTRAINT IF EXISTS departamentos_torre_numero_key")
+            cursor.execute("DROP INDEX IF EXISTS ux_departamentos_condominio_torre_numero")
+            cursor.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1
+                        FROM pg_constraint
+                        WHERE conname = 'uq_departamentos_condominio_torre_numero'
+                    ) THEN
+                        ALTER TABLE departamentos
+                        ADD CONSTRAINT uq_departamentos_condominio_torre_numero
+                        UNIQUE (condominio_id, torre, numero);
+                    END IF;
+                END
+                $$;
+                """
+            )
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS residentes (
@@ -134,12 +154,6 @@ def crear_tablas():
                 ON usuarios (condominio_id, username)
                 """
             )
-            cursor.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS ux_departamentos_condominio_torre_numero
-                ON departamentos (condominio_id, torre, numero)
-                """
-            )
 
             cursor.execute("SELECT id FROM condominios WHERE slug = 'demo'")
             demo = cursor.fetchone()
@@ -178,16 +192,23 @@ def crear_tablas():
 
 
 # ---------- Auth admin ----------
-def crear_token_sesion(username: str, rol: str, condominio_id: int, condominio_nombre: str, condominio_slug: str):
-    return serializer.dumps(
-        {
-            "username": username,
-            "rol": rol,
-            "condominio_id": condominio_id,
-            "condominio_nombre": condominio_nombre,
-            "condominio_slug": condominio_slug,
-        }
-    )
+def crear_token_sesion(
+    username: str,
+    rol: str,
+    condominio_id: int | None = None,
+    condominio_nombre: str = "",
+    condominio_slug: str = "",
+):
+    payload = {"username": username, "rol": rol}
+    if condominio_id is not None:
+        payload.update(
+            {
+                "condominio_id": condominio_id,
+                "condominio_nombre": condominio_nombre,
+                "condominio_slug": condominio_slug,
+            }
+        )
+    return serializer.dumps(payload)
 
 
 def require_login(token: str | None):
@@ -200,6 +221,8 @@ def require_login(token: str | None):
         condominio_id = data.get("condominio_id")
         condominio_nombre = data.get("condominio_nombre")
         condominio_slug = data.get("condominio_slug")
+        if username and rol == "superadmin":
+            return {"username": username, "rol": "superadmin"}
         if username and rol and condominio_id:
             return {
                 "username": username,
@@ -217,6 +240,12 @@ def verificar_password_admin(password: str):
     if not ADMIN_PASSWORD_HASH:
         return False
     return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PASSWORD_HASH.encode("utf-8"))
+
+
+def verificar_password_superadmin(password: str):
+    if not SUPERADMIN_PASSWORD_HASH:
+        return False
+    return bcrypt.checkpw(password.encode("utf-8"), SUPERADMIN_PASSWORD_HASH.encode("utf-8"))
 
 
 def puede_admin(usuario):
@@ -660,105 +689,182 @@ def admin_logout():
     return response
 
 
+@app.get("/superadmin/login", response_class=HTMLResponse)
+def superadmin_login_form():
+    contenido = """
+    <div class="card" style="max-width:460px;margin:auto;">
+        <h2>Acceso Superadmin</h2>
+        <form action="/superadmin/login" method="post">
+            <label>Usuario<input name="username" placeholder="Usuario" required></label>
+            <label>Contraseña<input name="password" type="password" placeholder="Contraseña" required></label>
+            <button class="full" type="submit">Entrar</button>
+        </form>
+        <div class="actions"><a class="btn dark" href="/">Volver</a></div>
+    </div>
+    """
+    return layout("Login superadmin", contenido)
+
+
+@app.post("/superadmin/login")
+def superadmin_login(username: str = Form(...), password: str = Form(...)):
+    if username != SUPERADMIN_USERNAME or not verificar_password_superadmin(password):
+        return HTMLResponse("<h3>Credenciales superadmin inválidas.</h3><a href='/superadmin/login'>Volver</a>", status_code=401)
+    response = RedirectResponse(url="/superadmin", status_code=303)
+    response.set_cookie(
+        key="admin_session",
+        value=crear_token_sesion(username=SUPERADMIN_USERNAME, rol="superadmin"),
+        httponly=True,
+        samesite="lax",
+        secure=False,
+    )
+    return response
+
+
+@app.get("/superadmin/logout")
+def superadmin_logout():
+    response = RedirectResponse(url="/superadmin/login", status_code=303)
+    response.delete_cookie("admin_session")
+    return response
+
+
 @app.get("/superadmin", response_class=HTMLResponse)
 def superadmin_panel(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
-        return no_permisos_response(usuario)
-    return RedirectResponse(url="/superadmin/condominios", status_code=303)
-
-
-@app.get("/superadmin/condominios", response_class=HTMLResponse)
-def superadmin_condominios(admin_session: str | None = Cookie(default=None)):
-    usuario = require_login(admin_session)
-    if not puede_superadmin(usuario):
-        return no_permisos_response(usuario)
+        return RedirectResponse(url="/superadmin/login", status_code=303)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, nombre, slug, activo, creado_en FROM condominios ORDER BY id ASC")
             data = cursor.fetchall()
     filas = "".join(
-        f"<tr><td>{c[0]}</td><td>{h(c[1])}</td><td>{h(c[2])}</td><td>{badge_estado('Activo','success') if c[3] else badge_estado('Inactivo','warning')}</td><td>{h(c[4])}</td><td><a class='btn dark' href='/superadmin/condominios/toggle/{c[0]}'>Toggle</a> <a class='btn' href='/superadmin/condominios/{c[0]}/usuarios'>Usuarios</a></td></tr>"
+        f"""
+        <tr>
+            <td>{h(c[1])}</td>
+            <td>{h(c[2])}</td>
+            <td>{badge_estado('Activo','success') if c[3] else badge_estado('Inactivo','warning')}</td>
+            <td><a class='btn' href='/c/{h(c[2])}/login'>Ingresar</a></td>
+            <td><a class='btn dark' href='/superadmin/condominios/{c[0]}/crear-admin'>Crear admin</a></td>
+            <td><a class='btn dark' href='/superadmin/condominios/toggle/{c[0]}'>Activar/Desactivar</a></td>
+        </tr>
+        """
         for c in data
     )
     contenido = f"""
-    <div class="hero"><h1>Superadmin</h1><p>Gestión de condominios.</p></div>
-    <div class="card">
-        <h2>Crear condominio</h2>
-        <form action="/superadmin/condominios/crear" method="post">
-            <label>Nombre<input name="nombre" required></label>
-            <label>Slug<input name="slug" required placeholder="mi-condominio"></label>
-            <button class="full" type="submit">Crear</button>
-        </form>
+    <div class="hero"><h1>Panel multi-condominio</h1><p>Administración global de condominios.</p></div>
+    <div class="actions">
+        <a class="btn" href="/superadmin/condominios/nuevo">Crear condominio</a>
+        <a class="btn dark" href="/superadmin/logout">Cerrar sesión superadmin</a>
     </div>
-    <div class="card"><h2>Listado condominios</h2><div class="table-wrap"><table>
-    <tr><th>ID</th><th>Nombre</th><th>Slug</th><th>Estado</th><th>Creado</th><th>Acción</th></tr>
+    <div class="card"><h2>Condominios</h2><div class="table-wrap"><table>
+    <tr><th>Nombre</th><th>Slug</th><th>Estado</th><th>Acceso</th><th>Admin inicial</th><th>Estado</th></tr>
     {filas}
     </table></div></div>
     """
-    return layout("Superadmin", contenido, usuario)
+    return layout("Panel multi-condominio", contenido, usuario)
 
 
-@app.post("/superadmin/condominios/crear")
-def superadmin_condominios_crear(
+@app.get("/superadmin/condominios/nuevo", response_class=HTMLResponse)
+def superadmin_condominio_nuevo_form(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return RedirectResponse(url="/superadmin/login", status_code=303)
+    contenido = """
+    <div class="hero"><h1>Crear condominio</h1><p>Alta de nuevo condominio.</p></div>
+    <div class="card">
+        <form action="/superadmin/condominios/nuevo" method="post">
+            <label>Nombre<input name="nombre" required></label>
+            <label>Slug<input name="slug" required placeholder="condominio-los-aromos"></label>
+            <button class="full" type="submit">Crear condominio</button>
+        </form>
+    </div>
+    """
+    return layout("Nuevo condominio", contenido, usuario)
+
+
+@app.post("/superadmin/condominios/nuevo")
+def superadmin_condominio_nuevo(
     admin_session: str | None = Cookie(default=None),
     nombre: str = Form(...),
     slug: str = Form(...),
 ):
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
-        return no_permisos_response(usuario)
+        return RedirectResponse(url="/superadmin/login", status_code=303)
+    slug_limpio = slug.strip().lower()
+    if " " in slug_limpio or not slug_limpio:
+        return HTMLResponse("Slug inválido. Usa minúsculas y sin espacios.", status_code=400)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO condominios (nombre, slug, activo) VALUES (%s, %s, TRUE) ON CONFLICT (slug) DO NOTHING",
-                (nombre.strip(), slug.strip().lower()),
+                (nombre.strip(), slug_limpio),
             )
         conn.commit()
-    return RedirectResponse(url="/superadmin/condominios", status_code=303)
+    return RedirectResponse(url="/superadmin", status_code=303)
+
+
+@app.get("/superadmin/condominios/{condominio_id}/crear-admin", response_class=HTMLResponse)
+def superadmin_crear_admin_form(condominio_id: int, admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return RedirectResponse(url="/superadmin/login", status_code=303)
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT nombre, slug FROM condominios WHERE id = %s", (condominio_id,))
+            condo = cursor.fetchone()
+    if not condo:
+        return HTMLResponse("Condominio no encontrado", status_code=404)
+    contenido = f"""
+    <div class="hero"><h1>Crear admin inicial</h1><p>{h(condo[0])} · {h(condo[1])}</p></div>
+    <div class="card">
+        <form action="/superadmin/condominios/{condominio_id}/crear-admin" method="post">
+            <label>Username<input name="username" required></label>
+            <label>Password<input type="password" name="password" required></label>
+            <button class="full" type="submit">Crear admin</button>
+        </form>
+    </div>
+    """
+    return layout("Crear admin condominio", contenido, usuario)
+
+
+@app.post("/superadmin/condominios/{condominio_id}/crear-admin")
+def superadmin_crear_admin(
+    condominio_id: int,
+    admin_session: str | None = Cookie(default=None),
+    username: str = Form(...),
+    password: str = Form(...),
+):
+    usuario = require_login(admin_session)
+    if not puede_superadmin(usuario):
+        return RedirectResponse(url="/superadmin/login", status_code=303)
+    password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id FROM condominios WHERE id = %s", (condominio_id,))
+            if not cursor.fetchone():
+                return HTMLResponse("Condominio no encontrado", status_code=404)
+            cursor.execute(
+                """
+                INSERT INTO usuarios (username, password_hash, rol, activo, condominio_id)
+                VALUES (%s, %s, 'admin', TRUE, %s)
+                ON CONFLICT (condominio_id, username) DO NOTHING
+                """,
+                (username.strip(), password_hash, condominio_id),
+            )
+        conn.commit()
+    return RedirectResponse(url="/superadmin", status_code=303)
 
 
 @app.get("/superadmin/condominios/toggle/{condominio_id}")
 def superadmin_condominios_toggle(condominio_id: int, admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
-        return no_permisos_response(usuario)
+        return RedirectResponse(url="/superadmin/login", status_code=303)
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("UPDATE condominios SET activo = NOT activo WHERE id = %s", (condominio_id,))
         conn.commit()
-    return RedirectResponse(url="/superadmin/condominios", status_code=303)
-
-
-@app.get("/superadmin/condominios/{condominio_id}/usuarios", response_class=HTMLResponse)
-def superadmin_condominio_usuarios(condominio_id: int, admin_session: str | None = Cookie(default=None)):
-    usuario = require_login(admin_session)
-    if not puede_superadmin(usuario):
-        return no_permisos_response(usuario)
-    with conectar() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT nombre, slug FROM condominios WHERE id = %s", (condominio_id,))
-            condo = cursor.fetchone()
-            cursor.execute(
-                "SELECT id, username, rol, activo, creado_en FROM usuarios WHERE condominio_id = %s ORDER BY id ASC",
-                (condominio_id,),
-            )
-            data = cursor.fetchall()
-    if not condo:
-        return HTMLResponse("Condominio no encontrado", status_code=404)
-    filas = "".join(
-        f"<tr><td>{u[0]}</td><td>{h(u[1])}</td><td>{h(u[2])}</td><td>{'Activo' if u[3] else 'Inactivo'}</td><td>{h(u[4])}</td></tr>"
-        for u in data
-    )
-    contenido = f"""
-    <div class="hero"><h1>Usuarios · {h(condo[0])}</h1><p>Slug: {h(condo[1])}</p></div>
-    <div class="card"><div class="table-wrap"><table>
-    <tr><th>ID</th><th>Username</th><th>Rol</th><th>Activo</th><th>Creado</th></tr>
-    {filas}
-    </table></div></div>
-    <div class="actions"><a class="btn" href="/superadmin/condominios">Volver</a></div>
-    """
-    return layout("Superadmin usuarios", contenido, usuario)
+    return RedirectResponse(url="/superadmin", status_code=303)
 
 
 @app.get("/admin/usuarios", response_class=HTMLResponse)
@@ -1055,7 +1161,7 @@ def obtener_o_crear_departamento(cursor, condominio_id, torre, numero):
         """
         SELECT id FROM departamentos
         WHERE condominio_id = %s
-          AND COALESCE(torre, '') = COALESCE(%s, '')
+          AND torre = %s
           AND numero = %s
         """,
         (condominio_id, torre, numero),
