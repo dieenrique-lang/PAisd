@@ -783,7 +783,7 @@ def mi_cuenta_condominio(
     admin_session: str | None = Cookie(default=None),
 ):
     usuario = require_login(admin_session)
-    if not usuario or usuario.get("rol") == "superadmin":
+    if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
         return RedirectResponse(url=f"/c/{slug}/login", status_code=303)
     if usuario.get("condominio_slug") != slug:
         return no_permisos_response(usuario)
@@ -820,7 +820,7 @@ def cambiar_password_mi_cuenta(
     admin_session: str | None = Cookie(default=None),
 ):
     usuario = require_login(admin_session)
-    if not usuario or usuario.get("rol") == "superadmin":
+    if not usuario or usuario.get("rol") not in {"admin", "guardia", "comite"}:
         return RedirectResponse(url=f"/c/{slug}/login", status_code=303)
     if usuario.get("condominio_slug") != slug:
         return no_permisos_response(usuario)
