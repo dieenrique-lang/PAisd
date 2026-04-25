@@ -6,10 +6,10 @@ from zoneinfo import ZoneInfo
 
 import bcrypt
 import psycopg
-from fastapi import Cookie, FastAPI, Form, Query
+from fastapi import Cookie, FastAPI, File, Form, Query, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from itsdangerous import BadSignature, URLSafeSerializer
-from openpyxl import Workbook
+from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 app = FastAPI()
@@ -230,6 +230,31 @@ def ahora_chile() -> datetime:
 
 def badge_estado(texto: str, estilo: str = "neutral"):
     return f"<span class='badge {h(estilo)}'>{h(texto)}</span>"
+
+
+def encabezados_normalizados(values):
+    return [str(v or "").strip().lower() for v in values]
+
+
+def render_resultado_importacion(titulo: str, volver_url: str, importados: int, omitidos: int, errores: list[str], usuario):
+    errores_html = ""
+    if errores:
+        items = "".join(f"<li>{h(e)}</li>" for e in errores[:80])
+        extra = f"<p class='muted'>Mostrando 80 de {len(errores)} errores.</p>" if len(errores) > 80 else ""
+        errores_html = f"<h3>Errores</h3><ul>{items}</ul>{extra}"
+    contenido = f"""
+    <div class="hero"><h1>Importación completada</h1><p>Resultado del proceso de carga masiva.</p></div>
+    <div class="card">
+        <h2>{h(titulo)}</h2>
+        <p><strong>{importados}</strong> registros importados.</p>
+        <p><strong>{omitidos}</strong> filas omitidas.</p>
+        {errores_html}
+        <div class="actions">
+            <a class="btn" href="{h(volver_url)}">Volver</a>
+        </div>
+    </div>
+    """
+    return HTMLResponse(layout("Importación", contenido, usuario))
 
 
 def layout(titulo: str, contenido: str, usuario=None):
@@ -780,6 +805,14 @@ def residentes(q: str = Query(default=""), admin_session: str | None = Cookie(de
             <button class="full" type="submit">Guardar residente</button>
         </form>
     </div>
+    <div class="card">
+        <h2>Importar residentes desde Excel</h2>
+        <p class="muted">Columnas requeridas: nombre, telefono, email, tipo, torre, numero</p>
+        <form action="/importar/residentes" method="post" enctype="multipart/form-data">
+            <label>Archivo .xlsx<input type="file" name="archivo" accept=".xlsx" required></label>
+            <button class="full" type="submit">Importar residentes</button>
+        </form>
+    </div>
     """ if es_admin else """
     <div class="hero"><h1>Residentes</h1><p>Vista de solo lectura para comité.</p></div>
     """
@@ -837,6 +870,73 @@ def guardar_residente(
             )
         conn.commit()
     return RedirectResponse(url="/residentes", status_code=303)
+
+
+@app.post("/importar/residentes")
+async def importar_residentes(admin_session: str | None = Cookie(default=None), archivo: UploadFile = File(...)):
+    usuario = require_login(admin_session)
+    if not puede_escribir_residentes(usuario):
+        return no_permisos_response(usuario)
+
+    if not archivo.filename or not archivo.filename.lower().endswith(".xlsx"):
+        return HTMLResponse("Archivo inválido. Debe ser .xlsx", status_code=400)
+
+    importados = 0
+    omitidos = 0
+    errores: list[str] = []
+
+    try:
+        contenido = await archivo.read()
+        wb = load_workbook(filename=BytesIO(contenido), data_only=True)
+        ws = wb.active
+    except Exception as exc:
+        return HTMLResponse(f"No se pudo leer el archivo: {h(exc)}", status_code=400)
+
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return HTMLResponse("El archivo está vacío.", status_code=400)
+
+    headers = encabezados_normalizados(rows[0])
+    required = ["nombre", "telefono", "email", "tipo", "torre", "numero"]
+    if headers[: len(required)] != required and set(required) - set(headers):
+        return HTMLResponse("Encabezados inválidos. Usa: nombre, telefono, email, tipo, torre, numero", status_code=400)
+
+    idx = {hname: headers.index(hname) for hname in required}
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            for fila_num, row in enumerate(rows[1:], start=2):
+                try:
+                    row = row or ()
+                    vals = [row[idx[k]] if idx[k] < len(row) else None for k in required]
+                    nombre, telefono, email, tipo, torre, numero = [(str(v).strip() if v is not None else "") for v in vals]
+
+                    if not any([nombre, telefono, email, tipo, torre, numero]):
+                        omitidos += 1
+                        continue
+                    if not nombre or not numero:
+                        omitidos += 1
+                        errores.append(f"Fila {fila_num}: nombre y numero son obligatorios.")
+                        continue
+                    if not tipo:
+                        tipo = "Residente"
+
+                    dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+                    cursor.execute(
+                        """
+                        INSERT INTO residentes (nombre, telefono, email, tipo, departamento_id)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (nombre, telefono, email, tipo, dep_id),
+                    )
+                    conn.commit()
+                    importados += 1
+                except Exception as exc:
+                    conn.rollback()
+                    omitidos += 1
+                    errores.append(f"Fila {fila_num}: {exc}")
+
+    return render_resultado_importacion("Residentes", "/residentes", importados, omitidos, errores, usuario)
 
 
 @app.get("/eliminar-residente/{residente_id}")
@@ -918,6 +1018,14 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
             <button class="full" type="submit">Guardar vehículo</button>
         </form>
     </div>
+    <div class="card">
+        <h2>Importar vehículos desde Excel</h2>
+        <p class="muted">Columnas requeridas: patente, marca, modelo, color, torre, numero</p>
+        <form action="/importar/vehiculos" method="post" enctype="multipart/form-data">
+            <label>Archivo .xlsx<input type="file" name="archivo" accept=".xlsx" required></label>
+            <button class="full" type="submit">Importar vehículos</button>
+        </form>
+    </div>
     """ if es_admin else """
     <div class="hero"><h1>Vehículos</h1><p>Vista de solo lectura para comité.</p></div>
     """
@@ -971,6 +1079,71 @@ def guardar_vehiculo(
             )
         conn.commit()
     return RedirectResponse(url="/vehiculos", status_code=303)
+
+
+@app.post("/importar/vehiculos")
+async def importar_vehiculos(admin_session: str | None = Cookie(default=None), archivo: UploadFile = File(...)):
+    usuario = require_login(admin_session)
+    if not puede_escribir_vehiculos(usuario):
+        return no_permisos_response(usuario)
+
+    if not archivo.filename or not archivo.filename.lower().endswith(".xlsx"):
+        return HTMLResponse("Archivo inválido. Debe ser .xlsx", status_code=400)
+
+    importados = 0
+    omitidos = 0
+    errores: list[str] = []
+
+    try:
+        contenido = await archivo.read()
+        wb = load_workbook(filename=BytesIO(contenido), data_only=True)
+        ws = wb.active
+    except Exception as exc:
+        return HTMLResponse(f"No se pudo leer el archivo: {h(exc)}", status_code=400)
+
+    rows = list(ws.iter_rows(values_only=True))
+    if not rows:
+        return HTMLResponse("El archivo está vacío.", status_code=400)
+
+    headers = encabezados_normalizados(rows[0])
+    required = ["patente", "marca", "modelo", "color", "torre", "numero"]
+    if headers[: len(required)] != required and set(required) - set(headers):
+        return HTMLResponse("Encabezados inválidos. Usa: patente, marca, modelo, color, torre, numero", status_code=400)
+
+    idx = {hname: headers.index(hname) for hname in required}
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            for fila_num, row in enumerate(rows[1:], start=2):
+                try:
+                    row = row or ()
+                    vals = [row[idx[k]] if idx[k] < len(row) else None for k in required]
+                    patente, marca, modelo, color, torre, numero = [(str(v).strip() if v is not None else "") for v in vals]
+
+                    if not any([patente, marca, modelo, color, torre, numero]):
+                        omitidos += 1
+                        continue
+                    if not patente or not numero:
+                        omitidos += 1
+                        errores.append(f"Fila {fila_num}: patente y numero son obligatorios.")
+                        continue
+
+                    dep_id = obtener_o_crear_departamento(cursor, torre, numero)
+                    cursor.execute(
+                        """
+                        INSERT INTO vehiculos (patente, marca, modelo, color, departamento_id)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (patente.upper(), marca, modelo, color, dep_id),
+                    )
+                    conn.commit()
+                    importados += 1
+                except Exception as exc:
+                    conn.rollback()
+                    omitidos += 1
+                    errores.append(f"Fila {fila_num}: {exc}")
+
+    return render_resultado_importacion("Vehículos", "/vehiculos", importados, omitidos, errores, usuario)
 
 
 @app.get("/eliminar-vehiculo/{vehiculo_id}")
