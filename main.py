@@ -757,24 +757,15 @@ def admin_limpiar_datos(
             status_code=400,
         )
 
+    tablas_operativas = ("residentes", "vehiculos", "visitas", "encomiendas", "departamentos")
+    resumen = {tabla: -1 for tabla in tablas_operativas}
     conn = None
     try:
         conn = conectar()
         with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                TRUNCATE TABLE
-                    visitas,
-                    encomiendas,
-                    vehiculos,
-                    residentes,
-                    departamentos
-                RESTART IDENTITY CASCADE
-                """
-            )
+            cursor.execute("TRUNCATE TABLE visitas, encomiendas, vehiculos, residentes, departamentos RESTART IDENTITY CASCADE;")
 
-            resumen = {}
-            for tabla in ["residentes", "vehiculos", "visitas", "encomiendas", "departamentos"]:
+            for tabla in tablas_operativas:
                 cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
                 resumen[tabla] = cursor.fetchone()[0]
         conn.commit()
