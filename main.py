@@ -376,6 +376,7 @@ def layout(titulo: str, contenido: str, usuario=None):
     condominio_label = "Sin condominio"
     admin_link = ""
     superadmin_link = '<a href="/superadmin/login">🛡️ Superadmin</a>' if superadmin_configurado() else ""
+    account_links = ""
     if usuario:
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
         condominio_label = h(usuario.get("condominio_nombre") or "Condominio")
@@ -384,6 +385,10 @@ def layout(titulo: str, contenido: str, usuario=None):
             admin_link = '<a href="/admin/usuarios">👤 Usuarios</a><a href="/admin/restablecer">🧨 Restablecer datos</a>'
         if usuario.get("rol") == "superadmin":
             admin_link += '<a href="/superadmin">🛡️ Superadmin</a>'
+            account_links = '<a class="btn dark" href="/superadmin/logout">Cerrar sesión</a>'
+        else:
+            slug = h(usuario.get("condominio_slug") or "demo")
+            account_links = f'<a class="btn" href="/c/{slug}/mi-cuenta">Mi cuenta</a><a class="btn dark" href="/c/{slug}/logout">Cerrar sesión</a>'
     return f"""
     <html>
     <head>
@@ -558,8 +563,18 @@ def layout(titulo: str, contenido: str, usuario=None):
             <main class="content-area">
                 <div class="wrap">
                     <div class="topbar">
-                        <strong>{h(titulo)}</strong>
-                        <span id="admin-status" class="{usuario_badge}">{usuario_label}</span>
+                        <div>
+                            <strong>{h(titulo)}</strong>
+                            <div class="muted" style="font-size:12px;">
+                                Condominio: {h(usuario.get("condominio_nombre") if usuario else "No autenticado")} ·
+                                Usuario: {h(usuario.get("username") if usuario else "-")} ·
+                                Rol: {h(usuario.get("rol") if usuario else "-")}
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <span id="admin-status" class="{usuario_badge}">{usuario_label}</span>
+                            {account_links}
+                        </div>
                     </div>
                     {contenido}
                 </div>
@@ -579,7 +594,7 @@ def startup_event():
 
 
 @app.get("/", response_class=HTMLResponse)
-def inicio(admin_session: str | None = Cookie(default=None)):
+def inicio(msg: str = Query(default=""), admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     superadmin_btn = '<a class="btn dark" href="/superadmin/login">Acceso superadmin</a>' if superadmin_configurado() else ""
     with conectar() as conn:
@@ -621,11 +636,13 @@ def inicio(admin_session: str | None = Cookie(default=None)):
         </div>
         """
 
-    contenido = f"""
+    msg_html = f"<div class='card'><p>{h(msg)}</p></div>" if msg else ""
+    menu_modulos = f"""
     <div class="hero">
         <h1>Panel principal</h1>
         <p>Operación diaria del condominio en un solo lugar.</p>
     </div>
+    {msg_html}
     {selector_condominio}
     <div class="card">
         <h2>Menú principal</h2>
@@ -640,14 +657,29 @@ def inicio(admin_session: str | None = Cookie(default=None)):
         </div>
     </div>
     """
+    contenido_publico = f"""
+    <div class="hero">
+        <h1>Panel principal</h1>
+        <p>Selecciona tu condominio para iniciar sesión.</p>
+    </div>
+    {msg_html}
+    {selector_condominio}
+    <div class="actions">
+        <a class="btn dark" href="/admin/login">Acceso administrador (demo)</a>
+        {superadmin_btn}
+    </div>
+    """
+    contenido = menu_modulos if usuario else contenido_publico
     return layout("CondoControl", contenido, usuario)
 
 
-def render_login_form(condominio_slug: str, condominio_nombre: str):
+def render_login_form(condominio_slug: str, condominio_nombre: str, msg: str = ""):
+    msg_html = f"<p class='muted'>{h(msg)}</p>" if msg else ""
     contenido = f"""
     <div class="card" style="max-width:460px;margin:auto;">
         <h2>Acceso · {h(condominio_nombre)}</h2>
         <p class="muted">Condominio: <strong>{h(condominio_slug)}</strong></p>
+        {msg_html}
         <form action="/c/{h(condominio_slug)}/login" method="post">
             <label>Usuario<input name="username" placeholder="Usuario" required></label>
             <label>Contraseña<input name="password" type="password" placeholder="Contraseña" required></label>
@@ -665,14 +697,14 @@ def admin_login_form():
 
 
 @app.get("/c/{slug}/login", response_class=HTMLResponse)
-def condominio_login_form(slug: str):
+def condominio_login_form(slug: str, msg: str = Query(default="")):
     with conectar() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT id, nombre, activo FROM condominios WHERE slug = %s", (slug,))
             condo = cursor.fetchone()
     if not condo or not condo[2]:
         return HTMLResponse("<h3>Condominio no disponible.</h3>", status_code=404)
-    return render_login_form(slug, condo[1])
+    return render_login_form(slug, condo[1], msg)
 
 
 def login_en_condominio(slug: str, username: str, password: str):
@@ -703,7 +735,7 @@ def login_en_condominio(slug: str, username: str, password: str):
     if not login_ok:
         return HTMLResponse(f"<h3>Credenciales incorrectas</h3><a href='/c/{h(slug)}/login'>Volver</a>", status_code=401)
 
-    response = RedirectResponse(url="/", status_code=303)
+    response = RedirectResponse(url="/?msg=Sesión+iniciada+con+éxito", status_code=303)
     response.set_cookie(
         key="admin_session",
         value=crear_token_sesion(
@@ -735,6 +767,96 @@ def admin_logout():
     response = RedirectResponse(url="/", status_code=303)
     response.delete_cookie("admin_session")
     return response
+
+
+@app.get("/c/{slug}/logout")
+def condominio_logout(slug: str):
+    response = RedirectResponse(url=f"/c/{slug}/login?msg=Sesión+cerrada+correctamente", status_code=303)
+    response.delete_cookie("admin_session")
+    return response
+
+
+@app.get("/c/{slug}/mi-cuenta", response_class=HTMLResponse)
+def mi_cuenta_condominio(
+    slug: str,
+    msg: str = Query(default=""),
+    admin_session: str | None = Cookie(default=None),
+):
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") == "superadmin":
+        return RedirectResponse(url=f"/c/{slug}/login", status_code=303)
+    if usuario.get("condominio_slug") != slug:
+        return no_permisos_response(usuario)
+    msg_html = f"<p class='muted'>{h(msg)}</p>" if msg else ""
+    contenido = f"""
+    <div class="hero"><h1>Mi cuenta</h1><p>Gestiona tu perfil y contraseña.</p></div>
+    <div class="card">
+        <h2>Información</h2>
+        <p><strong>Usuario:</strong> {h(usuario.get("username"))}</p>
+        <p><strong>Rol:</strong> {h(usuario.get("rol"))}</p>
+        <p><strong>Condominio:</strong> {h(usuario.get("condominio_nombre"))}</p>
+    </div>
+    <div class="card">
+        <h2>Cambiar contraseña</h2>
+        {msg_html}
+        <form action="/c/{h(slug)}/mi-cuenta/cambiar-password" method="post">
+            <label>Contraseña actual<input type="password" name="password_actual" required></label>
+            <label>Nueva contraseña<input type="password" name="password_nueva" required></label>
+            <label>Confirmar nueva contraseña<input type="password" name="password_confirmacion" required></label>
+            <button class="full" type="submit">Actualizar contraseña</button>
+        </form>
+    </div>
+    <div class="actions"><a class="btn" href="/">Inicio</a></div>
+    """
+    return layout("Mi cuenta", contenido, usuario)
+
+
+@app.post("/c/{slug}/mi-cuenta/cambiar-password")
+def cambiar_password_mi_cuenta(
+    slug: str,
+    password_actual: str = Form(...),
+    password_nueva: str = Form(...),
+    password_confirmacion: str = Form(...),
+    admin_session: str | None = Cookie(default=None),
+):
+    usuario = require_login(admin_session)
+    if not usuario or usuario.get("rol") == "superadmin":
+        return RedirectResponse(url=f"/c/{slug}/login", status_code=303)
+    if usuario.get("condominio_slug") != slug:
+        return no_permisos_response(usuario)
+    if password_nueva != password_confirmacion:
+        return RedirectResponse(url=f"/c/{slug}/mi-cuenta?msg=Las+contraseñas+nuevas+no+coinciden", status_code=303)
+    if len(password_nueva) < 8:
+        return RedirectResponse(
+            url=f"/c/{slug}/mi-cuenta?msg=La+nueva+contraseña+debe+tener+al+menos+8+caracteres",
+            status_code=303,
+        )
+
+    with conectar() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT password_hash
+                FROM usuarios
+                WHERE username = %s AND condominio_id = %s
+                """,
+                (usuario.get("username"), usuario.get("condominio_id")),
+            )
+            user_db = cursor.fetchone()
+            if not user_db or not bcrypt.checkpw(password_actual.encode("utf-8"), user_db[0].encode("utf-8")):
+                return RedirectResponse(url=f"/c/{slug}/mi-cuenta?msg=Contraseña+actual+incorrecta", status_code=303)
+
+            nuevo_hash = bcrypt.hashpw(password_nueva.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            cursor.execute(
+                """
+                UPDATE usuarios
+                SET password_hash = %s
+                WHERE username = %s AND condominio_id = %s
+                """,
+                (nuevo_hash, usuario.get("username"), usuario.get("condominio_id")),
+            )
+        conn.commit()
+    return RedirectResponse(url=f"/c/{slug}/mi-cuenta?msg=Contraseña+actualizada+correctamente", status_code=303)
 
 
 @app.get("/superadmin/login", response_class=HTMLResponse)
