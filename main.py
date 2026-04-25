@@ -265,7 +265,7 @@ def layout(titulo: str, contenido: str, usuario=None):
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
         usuario_badge = "badge info"
         if usuario.get("rol") == "admin":
-            admin_link = '<a href="/admin/usuarios">👤 Usuarios</a><a href="/admin/limpiar-datos">🧹 Limpiar datos</a>'
+            admin_link = '<a href="/admin/usuarios">👤 Usuarios</a><a href="/admin/restablecer">🧨 Restablecer datos</a>'
     return f"""
     <html>
     <head>
@@ -706,34 +706,34 @@ def admin_usuarios_eliminar(user_id: int, admin_session: str | None = Cookie(def
     return RedirectResponse(url="/admin/usuarios", status_code=303)
 
 
-@app.get("/admin/limpiar-datos", response_class=HTMLResponse)
-def admin_limpiar_datos_form(admin_session: str | None = Cookie(default=None)):
+@app.get("/admin/restablecer", response_class=HTMLResponse)
+def admin_restablecer_form(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
     if not puede_admin(usuario):
         return no_permisos_response(usuario)
 
     contenido = """
-    <div class="hero"><h1>Limpiar datos</h1><p>Herramienta de preparación antes de producción.</p></div>
+    <div class="hero"><h1>Restablecer datos de fábrica</h1><p>Herramienta de preparación antes de producción.</p></div>
     <div class="card" style="border:2px solid #dc2626;">
         <h2 style="color:#b91c1c;">Zona peligrosa</h2>
         <p class="muted">
-            Esta acción eliminará residentes, vehículos, visitas, encomiendas y departamentos.
-            No se eliminarán usuarios.
+            Esta acción eliminará permanentemente todos los residentes, vehículos, visitas, encomiendas y departamentos,
+            incluyendo datos importados desde Excel. No se eliminarán usuarios.
         </p>
-        <form action="/admin/limpiar-datos" method="post">
-            <label>Escribe exactamente LIMPIAR para confirmar
-                <input name="confirmacion" placeholder="LIMPIAR" required>
+        <form action="/admin/restablecer" method="post">
+            <label>Escribe exactamente RESTABLECER para confirmar
+                <input name="confirmacion" placeholder="RESTABLECER" required>
             </label>
-            <button class="full btn red" type="submit">Limpiar datos del condominio</button>
+            <button class="full btn red" type="submit">Restablecer datos</button>
         </form>
     </div>
     <div class="actions"><a class="btn" href="/">Volver</a></div>
     """
-    return layout("Limpiar datos", contenido, usuario)
+    return layout("Restablecer datos", contenido, usuario)
 
 
-@app.post("/admin/limpiar-datos")
-def admin_limpiar_datos(
+@app.post("/admin/restablecer")
+def admin_restablecer(
     admin_session: str | None = Cookie(default=None),
     confirmacion: str = Form(...),
 ):
@@ -741,15 +741,15 @@ def admin_limpiar_datos(
     if not puede_admin(usuario):
         return no_permisos_response(usuario)
 
-    if confirmacion.strip() != "LIMPIAR":
+    if confirmacion.strip() != "RESTABLECER":
         return HTMLResponse(
             layout(
-                "Limpiar datos",
+                "Restablecer datos",
                 """
                 <div class="card" style="border:2px solid #dc2626;">
                     <h2 style="color:#b91c1c;">Confirmación inválida</h2>
-                    <p>Debes escribir exactamente <strong>LIMPIAR</strong>.</p>
-                    <div class="actions"><a class="btn" href="/admin/limpiar-datos">Volver</a></div>
+                    <p>Debes escribir exactamente <strong>RESTABLECER</strong>.</p>
+                    <div class="actions"><a class="btn" href="/admin/restablecer">Volver</a></div>
                 </div>
                 """,
                 usuario,
@@ -768,18 +768,38 @@ def admin_limpiar_datos(
             for tabla in tablas_operativas:
                 cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
                 resumen[tabla] = cursor.fetchone()[0]
+
+            if any(conteo > 0 for conteo in resumen.values()):
+                cursor.execute("DELETE FROM visitas;")
+                cursor.execute("DELETE FROM encomiendas;")
+                cursor.execute("DELETE FROM vehiculos;")
+                cursor.execute("DELETE FROM residentes;")
+                cursor.execute("DELETE FROM departamentos;")
+
+                cursor.execute("ALTER SEQUENCE visitas_id_seq RESTART WITH 1;")
+                cursor.execute("ALTER SEQUENCE encomiendas_id_seq RESTART WITH 1;")
+                cursor.execute("ALTER SEQUENCE vehiculos_id_seq RESTART WITH 1;")
+                cursor.execute("ALTER SEQUENCE residentes_id_seq RESTART WITH 1;")
+                cursor.execute("ALTER SEQUENCE departamentos_id_seq RESTART WITH 1;")
+
+                for tabla in tablas_operativas:
+                    cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
+                    resumen[tabla] = cursor.fetchone()[0]
+
+            if any(conteo > 0 for conteo in resumen.values()):
+                raise RuntimeError("No fue posible restablecer completamente todas las tablas operativas.")
         conn.commit()
     except Exception as exc:
         if conn:
             conn.rollback()
         return HTMLResponse(
             layout(
-                "Limpiar datos",
+                "Restablecer datos",
                 f"""
                 <div class="card" style="border:2px solid #dc2626;">
-                    <h2 style="color:#b91c1c;">Error al limpiar datos</h2>
+                    <h2 style="color:#b91c1c;">Error al restablecer datos</h2>
                     <p>{h(exc)}</p>
-                    <div class="actions"><a class="btn" href="/admin/limpiar-datos">Volver</a></div>
+                    <div class="actions"><a class="btn" href="/admin/restablecer">Volver</a></div>
                 </div>
                 """,
                 usuario,
@@ -791,7 +811,7 @@ def admin_limpiar_datos(
             conn.close()
 
     contenido = f"""
-    <div class="hero"><h1>Limpieza completada</h1><p>Se eliminaron los datos operativos del condominio.</p></div>
+    <div class="hero"><h1>Restablecimiento completado</h1><p>Se eliminaron los datos operativos del condominio.</p></div>
     <div class="card">
         <h2>Resumen</h2>
         <ul>
@@ -805,7 +825,7 @@ def admin_limpiar_datos(
         <div class="actions"><a class="btn" href="/">Volver al inicio</a></div>
     </div>
     """
-    return HTMLResponse(layout("Limpieza completada", contenido, usuario))
+    return HTMLResponse(layout("Restablecimiento completado", contenido, usuario))
 
 
 def obtener_o_crear_departamento(cursor, torre, numero):
