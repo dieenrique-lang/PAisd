@@ -60,10 +60,12 @@ def crear_tablas():
                     marca TEXT,
                     modelo TEXT,
                     color TEXT,
+                    estacionamiento TEXT,
                     departamento_id INTEGER REFERENCES departamentos(id)
                 )
                 """
             )
+            cursor.execute("ALTER TABLE vehiculos ADD COLUMN IF NOT EXISTS estacionamiento TEXT")
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS visitas (
@@ -1093,17 +1095,18 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
                         v.marca ILIKE %s OR
                         v.modelo ILIKE %s OR
                         v.color ILIKE %s OR
+                        v.estacionamiento ILIKE %s OR
                         COALESCE(d.torre, '') ILIKE %s OR
                         d.numero ILIKE %s OR
                         (COALESCE(d.torre, '') || '-' || d.numero) ILIKE %s
                     )
                     """
                 )
-                params.extend([like, like, like, like, like, like, like])
+                params.extend([like, like, like, like, like, like, like, like])
             where_sql = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
             cursor.execute(
                 """
-                SELECT v.id, v.patente, v.marca, v.modelo, v.color, d.torre, d.numero
+                SELECT v.id, v.patente, v.marca, v.modelo, v.color, v.estacionamiento, d.torre, d.numero
                 FROM vehiculos v
                 LEFT JOIN departamentos d ON v.departamento_id = d.id
                 """
@@ -1119,7 +1122,7 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
     filas = "".join(
         f"""
         <tr>
-            <td>{h(v[1])}</td><td>{h(v[2])}</td><td>{h(v[3])}</td><td>{h(v[4])}</td><td>{format_depto(v[5], v[6])}</td>
+            <td>{h(v[1])}</td><td>{h(v[2])}</td><td>{h(v[3])}</td><td>{h(v[4])}</td><td>{format_depto(v[6], v[7])}</td><td>{h(v[5])}</td>
             <td>{render_delete_action(es_admin, f'/eliminar-vehiculo/{v[0]}', '¿Eliminar vehículo?')}</td>
         </tr>
         """
@@ -1137,12 +1140,13 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
             <label>Color<input name="color" placeholder="Color"></label>
             <label>Torre / Block<input name="torre" placeholder="Torre / Block"></label>
             <label>Departamento<input name="numero" placeholder="Departamento" required></label>
+            <label>Estacionamiento<input name="estacionamiento" placeholder="N° estacionamiento"></label>
             <button class="full" type="submit">Guardar vehículo</button>
         </form>
     </div>
     <div class="card">
         <h2>Importar vehículos desde Excel</h2>
-        <p class="muted">Columnas requeridas: patente, marca, modelo, color, torre, numero</p>
+        <p class="muted">Columnas requeridas: patente, marca, modelo, color, torre, numero, estacionamiento (estacionamiento es opcional)</p>
         <form action="/importar/vehiculos" method="post" enctype="multipart/form-data">
             <label>Archivo .xlsx<input type="file" name="archivo" accept=".xlsx" required></label>
             <button class="full" type="submit">Importar vehículos</button>
@@ -1158,7 +1162,7 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
         <h2>Buscar y filtrar</h2>
         <form action="/vehiculos" method="get">
             <label>Búsqueda
-                <input name="q" value="{h(q)}" placeholder="Buscar por patente, marca, modelo, color o depto">
+                <input name="q" value="{h(q)}" placeholder="Buscar por patente, marca, modelo, color, estacionamiento o depto">
             </label>
             <button type="submit">Aplicar filtros</button>
             <a class="btn dark" href="/vehiculos">Limpiar</a>
@@ -1167,7 +1171,7 @@ def vehiculos(q: str = Query(default=""), admin_session: str | None = Cookie(def
     <div class="card">
         <h2>Listado vehículos</h2>
         <div class="table-wrap"><table>
-            <tr><th>Patente</th><th>Marca</th><th>Modelo</th><th>Color</th><th>Depto</th><th>Acción</th></tr>
+            <tr><th>Patente</th><th>Marca</th><th>Modelo</th><th>Color</th><th>Depto</th><th>Estacionamiento</th><th>Acción</th></tr>
             {filas}
         </table></div>
     </div>
@@ -1185,6 +1189,7 @@ def guardar_vehiculo(
     color: str = Form(""),
     torre: str = Form(""),
     numero: str = Form(...),
+    estacionamiento: str = Form(""),
 ):
     usuario = require_login(admin_session)
     if not puede_escribir_vehiculos(usuario):
@@ -1194,10 +1199,10 @@ def guardar_vehiculo(
             dep_id = obtener_o_crear_departamento(cursor, torre, numero)
             cursor.execute(
                 """
-                INSERT INTO vehiculos (patente, marca, modelo, color, departamento_id)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (patente.upper(), marca, modelo, color, dep_id),
+                (patente.upper(), marca, modelo, color, estacionamiento, dep_id),
             )
         conn.commit()
     return RedirectResponse(url="/vehiculos", status_code=303)
@@ -1229,10 +1234,12 @@ async def importar_vehiculos(admin_session: str | None = Cookie(default=None), a
 
     headers = encabezados_normalizados(rows[0])
     required = ["patente", "marca", "modelo", "color", "torre", "numero"]
-    if headers[: len(required)] != required and set(required) - set(headers):
-        return HTMLResponse("Encabezados inválidos. Usa: patente, marca, modelo, color, torre, numero", status_code=400)
+    optional = ["estacionamiento"]
+    if set(required) - set(headers):
+        return HTMLResponse("Encabezados inválidos. Usa: patente, marca, modelo, color, torre, numero, estacionamiento", status_code=400)
 
-    idx = {hname: headers.index(hname) for hname in required}
+    idx = {hname: headers.index(hname) for hname in required if hname in headers}
+    idx_opt = {hname: headers.index(hname) for hname in optional if hname in headers}
 
     with conectar() as conn:
         with conn.cursor() as cursor:
@@ -1241,6 +1248,10 @@ async def importar_vehiculos(admin_session: str | None = Cookie(default=None), a
                     row = row or ()
                     vals = [row[idx[k]] if idx[k] < len(row) else None for k in required]
                     patente, marca, modelo, color, torre, numero = [(str(v).strip() if v is not None else "") for v in vals]
+                    estacionamiento = ""
+                    if "estacionamiento" in idx_opt:
+                        val_est = row[idx_opt["estacionamiento"]] if idx_opt["estacionamiento"] < len(row) else None
+                        estacionamiento = str(val_est).strip() if val_est is not None else ""
 
                     if not any([patente, marca, modelo, color, torre, numero]):
                         omitidos += 1
@@ -1253,10 +1264,10 @@ async def importar_vehiculos(admin_session: str | None = Cookie(default=None), a
                     dep_id = obtener_o_crear_departamento(cursor, torre, numero)
                     cursor.execute(
                         """
-                        INSERT INTO vehiculos (patente, marca, modelo, color, departamento_id)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (patente.upper(), marca, modelo, color, dep_id),
+                        (patente.upper(), marca, modelo, color, estacionamiento, dep_id),
                     )
                     conn.commit()
                     importados += 1
