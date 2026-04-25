@@ -18,10 +18,14 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esto")
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
-SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", ADMIN_USERNAME)
-SUPERADMIN_PASSWORD_HASH = os.getenv("SUPERADMIN_PASSWORD_HASH", ADMIN_PASSWORD_HASH)
+SUPERADMIN_USERNAME = os.getenv("SUPERADMIN_USERNAME", "")
+SUPERADMIN_PASSWORD_HASH = os.getenv("SUPERADMIN_PASSWORD_HASH", "")
 
 serializer = URLSafeSerializer(SECRET_KEY, salt="admin-session")
+
+
+def superadmin_configurado() -> bool:
+    return bool(SUPERADMIN_USERNAME and SUPERADMIN_PASSWORD_HASH)
 
 
 # ---------- Infraestructura ----------
@@ -371,6 +375,7 @@ def layout(titulo: str, contenido: str, usuario=None):
     usuario_badge = "badge dark"
     condominio_label = "Sin condominio"
     admin_link = ""
+    superadmin_link = '<a href="/superadmin/login">🛡️ Superadmin</a>' if superadmin_configurado() else ""
     if usuario:
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
         condominio_label = h(usuario.get("condominio_nombre") or "Condominio")
@@ -548,6 +553,7 @@ def layout(titulo: str, contenido: str, usuario=None):
                 <a href="/encomiendas">📦 Encomiendas</a>
                 {admin_link}
                 <a href="/admin/login">🔐 Admin</a>
+                {superadmin_link}
             </aside>
             <main class="content-area">
                 <div class="wrap">
@@ -575,7 +581,8 @@ def startup_event():
 @app.get("/", response_class=HTMLResponse)
 def inicio(admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
-    contenido = """
+    superadmin_btn = '<a class="btn dark" href="/superadmin/login">Acceso superadmin</a>' if superadmin_configurado() else ""
+    contenido = f"""
     <div class="hero">
         <h1>Panel principal</h1>
         <p>Operación diaria del condominio en un solo lugar.</p>
@@ -589,6 +596,7 @@ def inicio(admin_session: str | None = Cookie(default=None)):
             <a class="btn" href="/encomiendas">Encomiendas</a>
             <a class="btn" href="/dashboard-condominio">Dashboard</a>
             <a class="btn dark" href="/admin/login">Acceso administrador</a>
+            {superadmin_btn}
         </div>
     </div>
     """
@@ -691,6 +699,20 @@ def admin_logout():
 
 @app.get("/superadmin/login", response_class=HTMLResponse)
 def superadmin_login_form():
+    if not superadmin_configurado():
+        return HTMLResponse(
+            layout(
+                "Superadmin no configurado",
+                """
+                <div class="card" style="max-width:560px;margin:auto;">
+                    <h2>Acceso superadmin no configurado</h2>
+                    <p class="muted">Define SUPERADMIN_USERNAME y SUPERADMIN_PASSWORD_HASH para habilitar este acceso.</p>
+                    <div class="actions"><a class="btn dark" href="/">Volver</a></div>
+                </div>
+                """,
+            ),
+            status_code=503,
+        )
     contenido = """
     <div class="card" style="max-width:460px;margin:auto;">
         <h2>Acceso Superadmin</h2>
@@ -707,6 +729,8 @@ def superadmin_login_form():
 
 @app.post("/superadmin/login")
 def superadmin_login(username: str = Form(...), password: str = Form(...)):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     if username != SUPERADMIN_USERNAME or not verificar_password_superadmin(password):
         return HTMLResponse("<h3>Credenciales superadmin inválidas.</h3><a href='/superadmin/login'>Volver</a>", status_code=401)
     response = RedirectResponse(url="/superadmin", status_code=303)
@@ -729,6 +753,8 @@ def superadmin_logout():
 
 @app.get("/superadmin", response_class=HTMLResponse)
 def superadmin_panel(admin_session: str | None = Cookie(default=None)):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
@@ -765,6 +791,8 @@ def superadmin_panel(admin_session: str | None = Cookie(default=None)):
 
 @app.get("/superadmin/condominios/nuevo", response_class=HTMLResponse)
 def superadmin_condominio_nuevo_form(admin_session: str | None = Cookie(default=None)):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
@@ -787,6 +815,8 @@ def superadmin_condominio_nuevo(
     nombre: str = Form(...),
     slug: str = Form(...),
 ):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
@@ -805,6 +835,8 @@ def superadmin_condominio_nuevo(
 
 @app.get("/superadmin/condominios/{condominio_id}/crear-admin", response_class=HTMLResponse)
 def superadmin_crear_admin_form(condominio_id: int, admin_session: str | None = Cookie(default=None)):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
@@ -834,6 +866,8 @@ def superadmin_crear_admin(
     username: str = Form(...),
     password: str = Form(...),
 ):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
@@ -857,6 +891,8 @@ def superadmin_crear_admin(
 
 @app.get("/superadmin/condominios/toggle/{condominio_id}")
 def superadmin_condominios_toggle(condominio_id: int, admin_session: str | None = Cookie(default=None)):
+    if not superadmin_configurado():
+        return HTMLResponse("Acceso superadmin no configurado", status_code=503)
     usuario = require_login(admin_session)
     if not puede_superadmin(usuario):
         return RedirectResponse(url="/superadmin/login", status_code=303)
