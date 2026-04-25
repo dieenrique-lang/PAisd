@@ -265,7 +265,7 @@ def layout(titulo: str, contenido: str, usuario=None):
         usuario_label = f"{h(usuario.get('username'))} · {h(usuario.get('rol'))}"
         usuario_badge = "badge info"
         if usuario.get("rol") == "admin":
-            admin_link = '<a href="/admin/usuarios">👤 Usuarios</a>'
+            admin_link = '<a href="/admin/usuarios">👤 Usuarios</a><a href="/admin/limpiar-datos">🧹 Limpiar datos</a>'
     return f"""
     <html>
     <head>
@@ -704,6 +704,134 @@ def admin_usuarios_eliminar(user_id: int, admin_session: str | None = Cookie(def
             cursor.execute("DELETE FROM usuarios WHERE id = %s", (user_id,))
         conn.commit()
     return RedirectResponse(url="/admin/usuarios", status_code=303)
+
+
+@app.get("/admin/limpiar-datos", response_class=HTMLResponse)
+def admin_limpiar_datos_form(admin_session: str | None = Cookie(default=None)):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+
+    contenido = """
+    <div class="hero"><h1>Limpiar datos</h1><p>Herramienta de preparación antes de producción.</p></div>
+    <div class="card" style="border:2px solid #dc2626;">
+        <h2 style="color:#b91c1c;">Zona peligrosa</h2>
+        <p class="muted">
+            Esta acción eliminará residentes, vehículos, visitas, encomiendas y departamentos.
+            No se eliminarán usuarios.
+        </p>
+        <form action="/admin/limpiar-datos" method="post">
+            <label>Escribe exactamente LIMPIAR para confirmar
+                <input name="confirmacion" placeholder="LIMPIAR" required>
+            </label>
+            <button class="full btn red" type="submit">Limpiar datos del condominio</button>
+        </form>
+    </div>
+    <div class="actions"><a class="btn" href="/">Volver</a></div>
+    """
+    return layout("Limpiar datos", contenido, usuario)
+
+
+@app.post("/admin/limpiar-datos")
+def admin_limpiar_datos(
+    admin_session: str | None = Cookie(default=None),
+    confirmacion: str = Form(...),
+):
+    usuario = require_login(admin_session)
+    if not puede_admin(usuario):
+        return no_permisos_response(usuario)
+
+    if confirmacion.strip() != "LIMPIAR":
+        return HTMLResponse(
+            layout(
+                "Limpiar datos",
+                """
+                <div class="card" style="border:2px solid #dc2626;">
+                    <h2 style="color:#b91c1c;">Confirmación inválida</h2>
+                    <p>Debes escribir exactamente <strong>LIMPIAR</strong>.</p>
+                    <div class="actions"><a class="btn" href="/admin/limpiar-datos">Volver</a></div>
+                </div>
+                """,
+                usuario,
+            ),
+            status_code=400,
+        )
+
+    resumen = {
+        "residentes": 0,
+        "vehiculos": 0,
+        "visitas": 0,
+        "encomiendas": 0,
+        "departamentos": 0,
+    }
+
+    try:
+        with conectar() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM visitas")
+                resumen["visitas"] = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM visitas")
+
+                cursor.execute("SELECT COUNT(*) FROM encomiendas")
+                resumen["encomiendas"] = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM encomiendas")
+
+                cursor.execute("SELECT COUNT(*) FROM vehiculos")
+                resumen["vehiculos"] = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM vehiculos")
+
+                cursor.execute("SELECT COUNT(*) FROM residentes")
+                resumen["residentes"] = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM residentes")
+
+                cursor.execute("SELECT COUNT(*) FROM departamentos")
+                resumen["departamentos"] = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM departamentos")
+
+                for seq in [
+                    "visitas_id_seq",
+                    "encomiendas_id_seq",
+                    "vehiculos_id_seq",
+                    "residentes_id_seq",
+                    "departamentos_id_seq",
+                ]:
+                    try:
+                        cursor.execute(f"ALTER SEQUENCE {seq} RESTART WITH 1")
+                    except Exception:
+                        pass
+            conn.commit()
+    except Exception as exc:
+        return HTMLResponse(
+            layout(
+                "Limpiar datos",
+                f"""
+                <div class="card" style="border:2px solid #dc2626;">
+                    <h2 style="color:#b91c1c;">Error al limpiar datos</h2>
+                    <p>{h(exc)}</p>
+                    <div class="actions"><a class="btn" href="/admin/limpiar-datos">Volver</a></div>
+                </div>
+                """,
+                usuario,
+            ),
+            status_code=500,
+        )
+
+    contenido = f"""
+    <div class="hero"><h1>Limpieza completada</h1><p>Se eliminaron los datos operativos del condominio.</p></div>
+    <div class="card">
+        <h2>Resumen</h2>
+        <ul>
+            <li>Residentes eliminados: <strong>{resumen['residentes']}</strong></li>
+            <li>Vehículos eliminados: <strong>{resumen['vehiculos']}</strong></li>
+            <li>Visitas eliminadas: <strong>{resumen['visitas']}</strong></li>
+            <li>Encomiendas eliminadas: <strong>{resumen['encomiendas']}</strong></li>
+            <li>Departamentos eliminados: <strong>{resumen['departamentos']}</strong></li>
+        </ul>
+        <p class="muted">Usuarios, credenciales y roles no fueron eliminados.</p>
+        <div class="actions"><a class="btn" href="/">Volver al inicio</a></div>
+    </div>
+    """
+    return HTMLResponse(layout("Limpieza completada", contenido, usuario))
 
 
 def obtener_o_crear_departamento(cursor, torre, numero):
