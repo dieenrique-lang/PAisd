@@ -757,50 +757,30 @@ def admin_limpiar_datos(
             status_code=400,
         )
 
-    resumen = {
-        "residentes": 0,
-        "vehiculos": 0,
-        "visitas": 0,
-        "encomiendas": 0,
-        "departamentos": 0,
-    }
-
+    conn = None
     try:
-        with conectar() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM visitas")
-                resumen["visitas"] = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM visitas")
+        conn = conectar()
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                TRUNCATE TABLE
+                    visitas,
+                    encomiendas,
+                    vehiculos,
+                    residentes,
+                    departamentos
+                RESTART IDENTITY CASCADE
+                """
+            )
 
-                cursor.execute("SELECT COUNT(*) FROM encomiendas")
-                resumen["encomiendas"] = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM encomiendas")
-
-                cursor.execute("SELECT COUNT(*) FROM vehiculos")
-                resumen["vehiculos"] = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM vehiculos")
-
-                cursor.execute("SELECT COUNT(*) FROM residentes")
-                resumen["residentes"] = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM residentes")
-
-                cursor.execute("SELECT COUNT(*) FROM departamentos")
-                resumen["departamentos"] = cursor.fetchone()[0]
-                cursor.execute("DELETE FROM departamentos")
-
-                for seq in [
-                    "visitas_id_seq",
-                    "encomiendas_id_seq",
-                    "vehiculos_id_seq",
-                    "residentes_id_seq",
-                    "departamentos_id_seq",
-                ]:
-                    try:
-                        cursor.execute(f"ALTER SEQUENCE {seq} RESTART WITH 1")
-                    except Exception:
-                        pass
-            conn.commit()
+            resumen = {}
+            for tabla in ["residentes", "vehiculos", "visitas", "encomiendas", "departamentos"]:
+                cursor.execute(f"SELECT COUNT(*) FROM {tabla}")
+                resumen[tabla] = cursor.fetchone()[0]
+        conn.commit()
     except Exception as exc:
+        if conn:
+            conn.rollback()
         return HTMLResponse(
             layout(
                 "Limpiar datos",
@@ -815,17 +795,20 @@ def admin_limpiar_datos(
             ),
             status_code=500,
         )
+    finally:
+        if conn:
+            conn.close()
 
     contenido = f"""
     <div class="hero"><h1>Limpieza completada</h1><p>Se eliminaron los datos operativos del condominio.</p></div>
     <div class="card">
         <h2>Resumen</h2>
         <ul>
-            <li>Residentes eliminados: <strong>{resumen['residentes']}</strong></li>
-            <li>Vehículos eliminados: <strong>{resumen['vehiculos']}</strong></li>
-            <li>Visitas eliminadas: <strong>{resumen['visitas']}</strong></li>
-            <li>Encomiendas eliminadas: <strong>{resumen['encomiendas']}</strong></li>
-            <li>Departamentos eliminados: <strong>{resumen['departamentos']}</strong></li>
+            <li>residentes: <strong>{resumen['residentes']}</strong></li>
+            <li>vehiculos: <strong>{resumen['vehiculos']}</strong></li>
+            <li>visitas: <strong>{resumen['visitas']}</strong></li>
+            <li>encomiendas: <strong>{resumen['encomiendas']}</strong></li>
+            <li>departamentos: <strong>{resumen['departamentos']}</strong></li>
         </ul>
         <p class="muted">Usuarios, credenciales y roles no fueron eliminados.</p>
         <div class="actions"><a class="btn" href="/">Volver al inicio</a></div>
