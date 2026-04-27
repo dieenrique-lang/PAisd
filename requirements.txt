@@ -5,3 +5,4 @@ psycopg[binary]
 openpyxl
 itsdangerous
 bcrypt
+python-dotenv
