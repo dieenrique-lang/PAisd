@@ -1,3 +1,4 @@
+from dotenv import load_dotenv
 from datetime import datetime
 from html import escape
 from io import BytesIO
@@ -13,6 +14,8 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 
 app = FastAPI()
+
+load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 SECRET_KEY = os.getenv("SECRET_KEY", "cambia-esto")
@@ -557,7 +560,6 @@ def layout(titulo: str, contenido: str, usuario=None):
                 <a href="/visitas">🛂 Visitas</a>
                 <a href="/encomiendas">📦 Encomiendas</a>
                 {admin_link}
-                <a href="/admin/login">🔐 Admin</a>
                 {superadmin_link}
             </aside>
             <main class="content-area">
@@ -652,7 +654,6 @@ def inicio(msg: str = Query(default=""), admin_session: str | None = Cookie(defa
             <a class="btn" href="/visitas">Control de visitas</a>
             <a class="btn" href="/encomiendas">Encomiendas</a>
             <a class="btn" href="/dashboard-condominio">Dashboard</a>
-            <a class="btn dark" href="/admin/login">Acceso administrador</a>
             {superadmin_btn}
         </div>
     </div>
@@ -665,7 +666,6 @@ def inicio(msg: str = Query(default=""), admin_session: str | None = Cookie(defa
     {msg_html}
     {selector_condominio}
     <div class="actions">
-        <a class="btn dark" href="/admin/login">Acceso administrador (demo)</a>
         {superadmin_btn}
     </div>
     """
