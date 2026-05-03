@@ -1,8 +1,5 @@
-from io import BytesIO
-
-from fastapi import APIRouter, Cookie, File, Form, Query, UploadFile
+from fastapi import APIRouter, Cookie, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from openpyxl import load_workbook
 
 from core.auth import (
     condominio_actual_id,
@@ -12,8 +9,8 @@ from core.auth import (
     require_login,
 )
 from core.database import conectar, obtener_o_crear_departamento
-from core.helpers import encabezados_normalizados, format_depto, h, render_delete_action
-from core.layout import layout, render_resultado_importacion
+from core.helpers import format_depto, h, render_delete_action
+from core.layout import layout
 
 
 router = APIRouter()
@@ -152,77 +149,6 @@ def guardar_vehiculo(
     return RedirectResponse(url="/vehiculos", status_code=303)
 
 
-@router.post("/importar/vehiculos")
-async def importar_vehiculos(admin_session: str | None = Cookie(default=None), archivo: UploadFile = File(...)):
-    usuario = require_login(admin_session)
-    if not puede_escribir_vehiculos(usuario):
-        return no_permisos_response(usuario)
-
-    if not archivo.filename or not archivo.filename.lower().endswith(".xlsx"):
-        return HTMLResponse("Archivo inválido. Debe ser .xlsx", status_code=400)
-
-    importados = 0
-    omitidos = 0
-    errores: list[str] = []
-
-    try:
-        contenido = await archivo.read()
-        wb = load_workbook(filename=BytesIO(contenido), data_only=True)
-        ws = wb.active
-    except Exception as exc:
-        return HTMLResponse(f"No se pudo leer el archivo: {h(exc)}", status_code=400)
-
-    rows = list(ws.iter_rows(values_only=True))
-    if not rows:
-        return HTMLResponse("El archivo está vacío.", status_code=400)
-
-    headers = encabezados_normalizados(rows[0])
-    required = ["patente", "marca", "modelo", "color", "torre", "numero"]
-    optional = ["estacionamiento"]
-    if set(required) - set(headers):
-        return HTMLResponse("Encabezados inválidos. Usa: patente, marca, modelo, color, torre, numero, estacionamiento", status_code=400)
-
-    idx = {hname: headers.index(hname) for hname in required if hname in headers}
-    idx_opt = {hname: headers.index(hname) for hname in optional if hname in headers}
-
-    with conectar() as conn:
-        with conn.cursor() as cursor:
-            for fila_num, row in enumerate(rows[1:], start=2):
-                try:
-                    row = row or ()
-                    vals = [row[idx[k]] if idx[k] < len(row) else None for k in required]
-                    patente, marca, modelo, color, torre, numero = [(str(v).strip() if v is not None else "") for v in vals]
-                    estacionamiento = ""
-                    if "estacionamiento" in idx_opt:
-                        val_est = row[idx_opt["estacionamiento"]] if idx_opt["estacionamiento"] < len(row) else None
-                        estacionamiento = str(val_est).strip() if val_est is not None else ""
-
-                    if not any([patente, marca, modelo, color, torre, numero]):
-                        omitidos += 1
-                        continue
-                    if not patente or not numero:
-                        omitidos += 1
-                        errores.append(f"Fila {fila_num}: patente y numero son obligatorios.")
-                        continue
-
-                    dep_id = obtener_o_crear_departamento(cursor, condominio_actual_id(usuario), torre, numero)
-                    cursor.execute(
-                        """
-                        INSERT INTO vehiculos (patente, marca, modelo, color, estacionamiento, departamento_id, condominio_id)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (patente.upper(), marca, modelo, color, estacionamiento, dep_id, condominio_actual_id(usuario)),
-                    )
-                    conn.commit()
-                    importados += 1
-                except Exception as exc:
-                    conn.rollback()
-                    omitidos += 1
-                    errores.append(f"Fila {fila_num}: {exc}")
-
-    return render_resultado_importacion("Vehículos", "/vehiculos", importados, omitidos, errores, usuario)
-
-
 @router.get("/eliminar-vehiculo/{vehiculo_id}")
 def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(default=None)):
     usuario = require_login(admin_session)
@@ -237,3 +163,4 @@ def eliminar_vehiculo(vehiculo_id: int, admin_session: str | None = Cookie(defau
             )
         conn.commit()
     return RedirectResponse(url="/vehiculos", status_code=303)
+

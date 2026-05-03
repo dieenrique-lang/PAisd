@@ -1,22 +1,13 @@
-from io import BytesIO
-
 import bcrypt
-from fastapi import Cookie, FastAPI, File, Form, Query, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
-from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Alignment, Font, PatternFill
+from fastapi import Cookie, FastAPI, Form, Query
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from core.auth import (
     condominio_actual_id,
     crear_token_sesion,
     no_permisos_response,
     puede_admin,
-    puede_escribir_residentes,
-    puede_escribir_vehiculos,
-    puede_exportar,
     puede_superadmin,
-    puede_ver_residentes,
-    puede_ver_vehiculos,
     require_login,
     verificar_password_admin,
     verificar_password_superadmin,
@@ -26,13 +17,10 @@ from core import database as database_core
 from core.database import conectar, obtener_o_crear_departamento
 from core.helpers import (
     badge_estado,
-    encabezados_normalizados,
-    format_depto,
     h,
-    render_delete_action,
 )
-from core.layout import layout, render_resultado_importacion
-from routers import dashboard, encomiendas, residentes, vehiculos, visitas
+from core.layout import layout
+from routers import dashboard, encomiendas, exportar, importar, residentes, vehiculos, visitas
 
 app = FastAPI()
 app.include_router(visitas.router)
@@ -40,6 +28,8 @@ app.include_router(encomiendas.router)
 app.include_router(dashboard.router)
 app.include_router(residentes.router)
 app.include_router(vehiculos.router)
+app.include_router(importar.router)
+app.include_router(exportar.router)
 
 @app.on_event("startup")
 def startup_event():
@@ -861,137 +851,10 @@ def admin_restablecer(
     return HTMLResponse(layout("Restablecimiento completado", contenido, usuario))
 
 
-@app.get("/exportar/visitas")
-def exportar_visitas(admin_session: str | None = Cookie(default=None)):
-    usuario = require_login(admin_session)
-    if not puede_exportar(usuario):
-        return no_permisos_response(usuario)
-    with conectar() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT v.id, v.nombre, v.rut, v.patente, d.torre, d.numero, v.autorizado_por,
-                       v.observacion, v.hora_ingreso, v.hora_salida
-                FROM visitas v
-                LEFT JOIN departamentos d ON v.departamento_id = d.id
-                WHERE v.condominio_id = %s
-                ORDER BY v.id DESC
-                """,
-                (condominio_actual_id(usuario),),
-            )
-            visitas = cursor.fetchall()
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Visitas"
-
-    headers = [
-        "ID",
-        "Nombre visita",
-        "RUT",
-        "Patente",
-        "Torre",
-        "Departamento",
-        "Autorizado por",
-        "Observación",
-        "Hora ingreso",
-        "Hora salida",
-    ]
-    ws.append(headers)
-
-    fill = PatternFill(fill_type="solid", fgColor="2563EB")
-    font = Font(color="FFFFFF", bold=True)
-    align = Alignment(horizontal="center")
-
-    for cell in ws[1]:
-        cell.fill = fill
-        cell.font = font
-        cell.alignment = align
-
-    for visita in visitas:
-        ws.append(list(visita))
-
-    for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J"]:
-        ws.column_dimensions[col].width = 22
-
-    archivo = BytesIO()
-    wb.save(archivo)
-    archivo.seek(0)
-
-    return StreamingResponse(
-        archivo,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=visitas_condominio.xlsx"},
-    )
-
-
-@app.get("/exportar/encomiendas")
-def exportar_encomiendas(admin_session: str | None = Cookie(default=None)):
-    usuario = require_login(admin_session)
-    if not puede_exportar(usuario):
-        return no_permisos_response(usuario)
-    with conectar() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT e.id, e.nombre_receptor, d.torre, d.numero, e.descripcion, e.recibido_por,
-                       e.fecha_recepcion, e.entregado, e.fecha_entrega, e.entregado_a, e.observacion
-                FROM encomiendas e
-                LEFT JOIN departamentos d ON e.departamento_id = d.id
-                WHERE e.condominio_id = %s
-                ORDER BY e.id DESC
-                """,
-                (condominio_actual_id(usuario),),
-            )
-            data = cursor.fetchall()
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Encomiendas"
-
-    headers = [
-        "ID",
-        "Nombre receptor",
-        "Torre",
-        "Departamento",
-        "Descripción",
-        "Recibido por",
-        "Fecha recepción",
-        "Entregado",
-        "Fecha entrega",
-        "Entregado a",
-        "Observación",
-    ]
-    ws.append(headers)
-
-    fill = PatternFill(fill_type="solid", fgColor="2563EB")
-    font = Font(color="FFFFFF", bold=True)
-    align = Alignment(horizontal="center")
-    for cell in ws[1]:
-        cell.fill = fill
-        cell.font = font
-        cell.alignment = align
-
-    for row in data:
-        ws.append(list(row))
-
-    for col in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"]:
-        ws.column_dimensions[col].width = 22
-
-    archivo = BytesIO()
-    wb.save(archivo)
-    archivo.seek(0)
-
-    return StreamingResponse(
-        archivo,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=encomiendas_condominio.xlsx"},
-    )
-
-
 @app.get("/health")
 def health():
     return {"ok": True}
+
 
 
 
