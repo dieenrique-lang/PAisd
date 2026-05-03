@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 
-from core import database as database_core
+from core.database import crear_tablas
 from routers import condominios, dashboard, encomiendas, exportar, home, importar, login, residentes, reset, superadmin, usuarios, vehiculos, visitas
 
-app = FastAPI()
+app = FastAPI(title="CondoControl")
 app.include_router(home.router)
 app.include_router(condominios.router)
 app.include_router(visitas.router)
@@ -21,7 +21,7 @@ app.include_router(reset.router)
 @app.on_event("startup")
 def startup_event():
     try:
-        database_core.crear_tablas()
+        crear_tablas()
     except Exception as exc:
         print(f"[startup] No se pudieron crear/verificar tablas: {exc}")
 
@@ -29,14 +29,5 @@ def startup_event():
 @app.get("/health")
 def health():
     return {"ok": True}
-
-
-
-
-
-
-
-
-
 
 
