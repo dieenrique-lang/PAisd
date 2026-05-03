@@ -72,7 +72,7 @@ def login_en_condominio(slug: str, username: str, password: str):
     if not login_ok:
         return HTMLResponse(f"<h3>Credenciales incorrectas</h3><a href='/c/{h(slug)}/login'>Volver</a>", status_code=401)
 
-    response = RedirectResponse(url="/?msg=Sesión+iniciada+con+éxito", status_code=303)
+    response = RedirectResponse(url="/dashboard-condominio?login=ok&msg=Sesión+iniciada+con+éxito", status_code=303)
     response.set_cookie(
         key="admin_session",
         value=crear_token_sesion(
