@@ -11,9 +11,10 @@ from core import database as database_core
 from core.database import conectar
 from core.helpers import h
 from core.layout import layout
-from routers import condominios, dashboard, encomiendas, exportar, importar, login, residentes, superadmin, usuarios, vehiculos, visitas
+from routers import condominios, dashboard, encomiendas, exportar, home, importar, login, residentes, superadmin, usuarios, vehiculos, visitas
 
 app = FastAPI()
+app.include_router(home.router)
 app.include_router(condominios.router)
 app.include_router(visitas.router)
 app.include_router(encomiendas.router)
